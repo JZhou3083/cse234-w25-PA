@@ -544,6 +544,17 @@ class MatMulOp(Op):
         """Return the matrix multiplication result of input values."""
         assert len(input_values) == 2
         """TODO: your code here"""
+        return input_values[0]@input_values[1]
+
+    def gradient(self, node: Node, output_grad: Node) -> List[Node]:
+        """Given gradient of matmul node, return partial adjoint to each input."""
+        """TODO: your code here"""
+        assert len(node.inputs) == 2
+        A, B = node.inputs
+        grad_A = MatMulOp()(output_grad, TransposeOp()(B))
+        grad_B = MatMulOp()(TransposeOp()(A),output_grad)
+        return [grad_A,grad_B]
+
 
 
 class SoftmaxOp(Op):
@@ -561,10 +572,21 @@ class SoftmaxOp(Op):
         """Return softmax of input along specified dimension."""
         assert len(input_values) == 1
         """TODO: your code here"""
+        return torch.softmax(input_values[0])
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
         """Given gradient of softmax node, return partial adjoint to input."""
         """TODO: your code here"""
+        dim = node.attrs['dim']
+
+        # compute softmax again
+        softmax_out = torch.softmax(node.inputs[0])
+        dot = torch.sum(output_grad * softmax_out, dim=dim, keepdim=True)
+
+        grad_input = softmax_out * (output_grad - dot)
+
+        return [grad_input]
+
 
 
 class LayerNormOp(Op):
@@ -582,6 +604,20 @@ class LayerNormOp(Op):
         """Return layer normalized input."""
         assert len(input_values) == 1
         """TODO: your code here"""
+        input_node = input_values[0]
+        normalzed_shape = node.attrs['normalized_shape']
+        eps = node.attrs['eps']
+
+        # Determine which dimensions to normalize
+        dim = tuple(range(-len(normalzed_shape),0))
+
+        mean = input_node.mean(dim = dim, keepdim =True)
+        var = input_node.var(dim=dim, unbiased=False, keepdim=True)
+
+        node.attrs['mean'] = mean
+        node.attrs['var'] = var
+
+        return (input_node-mean)/torch.sqrt(var+eps)
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
         """
@@ -589,6 +625,25 @@ class LayerNormOp(Op):
         adjoint (gradient) wrt the input x.
         """
         """TODO: your code here"""
+        x = node.inputs[0].value
+        eps = node.attrs['eps']
+        mean = node.attrs['mean']
+        var = node.attrs['var']
+        normalized_shape = node.attrs['normalized_shape']
+
+        dim = tuple(range(-len(normalized_shape),0))
+        std = torch.sqrt(var+eps)
+        x_hat = (x-mean)/std
+
+        N =1
+        for d in normalized_shape:
+            N *=d
+
+        # Gradient of loss w.r.t. input x
+        dy = output_grad
+        dx = (1. / std) * (dy - dy.mean(dim=dim, keepdim=True) - x_hat * (dy * x_hat).mean(dim=dim, keepdim=True))
+
+        return [dx]
 
 class ReLUOp(Op):
     """ReLU activation function."""
@@ -676,15 +731,30 @@ class MeanOp(Op):
         return torch.mean(input_values[0], dim=dim,keepdim=keepdim)
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
-        """TODO: your code here"""
         input_node = node.inputs[0]
-        input_shape = input_node.shape
-        dim = node.attrs['dim']
-        keepdim = node.attrs['keepdim']
+        dim = node.attrs["dim"]
+        keepdim = node.attrs["keepdim"]
 
-        # compute the number of element along the dim
-        if dim == None:
-            num_elements = torch.prod()
+        # Compute the number of elements reduced along dim
+        shape = input_node.shape
+        if isinstance(dim, int):
+            dim = (dim,)
+        reduce_size = 1
+        for d in dim:
+            reduce_size *= shape[d]
+
+        # Scale the output gradient by 1 / reduce_size
+        scaled_grad = output_grad * (1.0 / reduce_size)
+
+        # Broadcast the scaled gradient to match input shape
+        if not keepdim:
+            for d in sorted(dim):
+                scaled_grad = scaled_grad.unsqueeze(d)
+        broadcasted_grad = scaled_grad.expand(input_node.shape)
+
+        return [broadcasted_grad]
+
+
 
 # Create global instances of ops.
 # Your implementation should just use these instances, rather than creating new instances.
