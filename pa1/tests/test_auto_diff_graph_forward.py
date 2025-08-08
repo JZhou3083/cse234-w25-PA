@@ -155,6 +155,17 @@ def test_graph():
         expected_outputs=[torch.tensor([[2.565, 5.614], [4.012, -4.877]])],
     )
 
+def test_sqrt():
+    x1 = ad.Variable("x1")
+    y = ad.sqrt(x1)
+    evaluator = ad.Evaluator(eval_nodes=[y])
+
+    check_evaluator_output(
+        evaluator,
+        input_values={x1: torch.tensor([[1.0, 4.0], [9.0, 16.0]])},
+        expected_outputs=[torch.tensor([[1.0, 2.0], [3.0, 4.0]])],
+    )
+
 
 if __name__ == "__main__":
     test_identity()
@@ -165,5 +176,6 @@ if __name__ == "__main__":
     test_div()
     test_div_by_const()
     test_matmul()
+    test_sqrt()
 
     test_graph()
