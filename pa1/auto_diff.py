@@ -210,8 +210,8 @@ class MulOp(Op):
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
         """Given gradient of multiplication node, return partial adjoint to each input."""
         return [output_grad * node.inputs[1], output_grad * node.inputs[0]]
-        
- 
+
+
 
 class MulByConstOp(Op):
     """Op to element-wise multiply a node by a constant."""
@@ -513,7 +513,7 @@ class TransposeOp(Op):
         """Given gradient of transpose node, return partial adjoint to input."""
         dim0 = node.attrs['dim0']
         dim1 = node.attrs['dim1']
-        return [output_grad.transpose(dim0,dim1)]
+        return [transpose(output_grad,dim0= dim0, dim1= dim1)]
 
 class MatMulOp(Op):
     """Matrix multiplication op of two nodes."""
@@ -545,15 +545,20 @@ class MatMulOp(Op):
         """Return the matrix multiplication result of input values."""
         assert len(input_values) == 2
         """TODO: your code here"""
-        return input_values[0]@input_values[1]
+        return torch.matmul(input_values[0], input_values[1])
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
         """Given gradient of matmul node, return partial adjoint to each input."""
         """TODO: your code here"""
         assert len(node.inputs) == 2
         A, B = node.inputs
-        grad_A = MatMulOp()(output_grad, TransposeOp()(B,0,1))
-        grad_B = MatMulOp()(TransposeOp()(A,0,1),output_grad)
+
+        # Transpose last two dimensions for batched matmul
+        B_T = transpose(B, -2, -1)
+        A_T = transpose(A, -2, -1)
+
+        grad_A = matmul(output_grad, B_T)
+        grad_B = matmul(A_T,output_grad)
         return [grad_A,grad_B]
 
 
@@ -579,8 +584,8 @@ class SoftmaxOp(Op):
         dim = node.attrs['dim']
 
         # compute softmax again
-        softmax_out = torch.softmax(node.inputs[0])
-        dot = torch.sum(output_grad * softmax_out, dim=dim, keepdim=True)
+        softmax_out = softmax(node.inputs[0])
+        dot = sum_op(output_grad * softmax_out, dim=dim, keepdim=True)
 
         grad_input = softmax_out * (output_grad - dot)
 
@@ -613,35 +618,37 @@ class LayerNormOp(Op):
         mean = input_node.mean(dim = dim, keepdim =True)
         var = input_node.var(dim=dim, unbiased=False, keepdim=True)
 
-        node.attrs['mean'] = mean
-        node.attrs['var'] = var
-
         return (input_node-mean)/torch.sqrt(var+eps)
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
-        """
-        Given gradient of the LayerNorm node wrt its output, return partial
-        adjoint (gradient) wrt the input x.
-        """
-        x = node.inputs[0].value
-        eps = node.attrs['eps']
-        mean = node.attrs['mean']
-        var = node.attrs['var']
-        normalized_shape = node.attrs['normalized_shape']
+        input_node = node.inputs[0]
+        normalized_shape = node.attrs["normalized_shape"]
+        eps = node.attrs["eps"]
 
-        dim = tuple(range(-len(normalized_shape),0))
-        std = torch.sqrt(var+eps)
-        x_hat = (x-mean)/std
+        dim = tuple(range(-len(normalized_shape), 0))
 
-        N =1
-        for d in normalized_shape:
-            N *=d
+        # mean and variance
+        mean_node = mean(input_node, dim=dim, keepdim=True)
+        x_minus_mean = input_node - mean_node
+        squared_diff = power(x_minus_mean, 2)
+        var_node = mean(squared_diff, dim=dim, keepdim=True)
+        std_node = sqrt(var_node + eps)
 
-        # Gradient of loss w.r.t. input x
-        dy = output_grad
-        dx = (1. / std) * (dy - dy.mean(dim=dim, keepdim=True) - x_hat * (dy * x_hat).mean(dim=dim, keepdim=True))
+        # normalized input
+        x_hat = x_minus_mean / std_node
 
-        return [dx]
+        # gradient terms
+        g = output_grad
+        g_mean = mean(g, dim=dim, keepdim=True)
+        gxhat = g * x_hat
+        gxhat_mean = mean(gxhat, dim=dim, keepdim=True)
+
+        # final gradient
+        grad_input = (g - g_mean - x_hat * gxhat_mean) / std_node
+
+        return [grad_input]
+
+
 
 class ReLUOp(Op):
     """ReLU activation function."""
@@ -657,14 +664,13 @@ class ReLUOp(Op):
         """Return ReLU of input."""
         assert len(input_values) == 1
         """TODO: your code here"""
-        node.attrs['value'] = input_values[0]
         return torch.relu(input_values[0])
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
         """Given gradient of ReLU node, return partial adjoint to input."""
         """TODO: your code here"""
         input_node = node.inputs[0]
-        relu_mask = input_node.attrs['value'] > 0
+        relu_mask = greater(input_node, zeros_like(input_node))
         return [output_grad*relu_mask]
 
 class SqrtOp(Op):
@@ -685,7 +691,7 @@ class SqrtOp(Op):
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
         """TODO: your code here"""
         input_node = node.inputs[0]
-        return [output_grad/(mul_by_const(torch.sqrt(input_node),2))]
+        return [output_grad/(mul_by_const(sqrt(input_node),2))]
 
 class PowerOp(Op):
     """Op to compute element-wise power."""
@@ -708,7 +714,7 @@ class PowerOp(Op):
         """TODO: your code here"""
         exponent = node.attrs['exponent']
         input_node = node.inputs[0]
-        return [output_grad*mul_by_const(input_node**(exponent-1) , exponent)]
+        return [output_grad*mul_by_const(power(input_node,(exponent-1)) , exponent)]
 
 class MeanOp(Op):
     """Op to compute mean along specified dimensions.
