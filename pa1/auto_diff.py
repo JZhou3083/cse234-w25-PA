@@ -881,7 +881,7 @@ def gradients(output_node: Node, nodes: List[Node]) -> List[Node]:
     node_to_grad: Dict[Node, Node] = {}
 
     # The gradient of the output node is 1
-    grad_one = Variable("1")  # or use a constant wrapper if available
+    grad_one = ones_like(output_node)  # or use a constant wrapper if available
     node_to_grad[output_node] = grad_one
 
     # Topological sort using reverse post-order DFS
