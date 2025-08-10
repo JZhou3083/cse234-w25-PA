@@ -802,6 +802,25 @@ def topological_sort(nodes):
         Nodes in topological order
     """
     """TODO: your code here"""
+    # Ensure we're working with a list
+    if not isinstance(nodes, (list, tuple)):
+        nodes = [nodes]
+
+    visited = set()
+    order = []
+
+    def dfs(node):
+        if node in visited:
+            return
+        visited.add(node)
+        for inp in getattr(node, "inputs", []):
+            dfs(inp)
+        order.append(node)
+
+    for n in nodes:
+        dfs(n)
+
+    return order  # Already in reverse post-order
 
 class Evaluator:
     """The node evaluator that computes the values of nodes in a computational graph."""
@@ -836,81 +855,63 @@ class Evaluator:
             The list of values for nodes in `eval_nodes` field.
         """
         """TODO: your code here"""
-        computed_values = {}  # Cache of computed node values
+        # Sort all required nodes in topological order
+        sorted_nodes = topological_sort(self.eval_nodes)
 
-        def compute(node: Node) -> torch.Tensor:
-            if node in computed_values:
-                return computed_values[node]
+        computed_values = {}
 
+        for node in sorted_nodes:
             if node in input_values:
-                value = input_values[node]
-            elif node.inputs:
-                input_vals = [compute(inp) for inp in node.inputs]
-                value = node.op.compute(node, input_vals)
+                # Value provided by user
+                computed_values[node] = input_values[node]
+            elif getattr(node, "inputs", None):
+                # Compute from inputs
+                input_vals = [computed_values[inp] for inp in node.inputs]
+                computed_values[node] = node.op.compute(node, input_vals)
             else:
-                raise RuntimeError(f"Placeholder node '{node.name}' has no value in input_values.")
+                # Node has no inputs and wasn't provided
+                raise ValueError(f"No value provided for input node '{node.name}'.")
 
-            computed_values[node] = value
-            return value
+        # Return only the values for requested eval_nodes
+        return [computed_values[node] for node in self.eval_nodes]
 
-        return [compute(node) for node in self.eval_nodes]
-
-
-def gradients(output_node: Node, nodes: List[Node]) -> List[Node]:
-    """Construct the backward computational graph, which takes gradient
-    of given output node with respect to each node in input list.
-    Return the list of gradient nodes, one for each node in the input list.
+def gradients(output_node: "Node", nodes: List["Node"]) -> List["Node"]:
+    """Construct the backward computational graph.
 
     Parameters
     ----------
-    output_node: Node
+    output_node : Node
         The output node to take gradient of, whose gradient is 1.
-
-    nodes: List[Node]
-        The list of nodes to take gradient with regard to.
+    nodes : List[Node]
+        The list of nodes to take gradient with respect to.
 
     Returns
     -------
-    grad_nodes: List[Node]
-        A list of gradient nodes, one for each input nodes respectively.
+    grad_nodes : List[Node]
+        Gradient nodes, one per input node in `nodes`.
     """
-    """TODO: your code here"""
-    from collections import defaultdict, deque
+    # 1. Initialize mapping from node -> gradient expression
+    node_to_grad: Dict["Node", "Node"] = {}
+    node_to_grad[output_node] = ones_like(output_node)
 
-    # Map from node to its gradient expression
-    node_to_grad: Dict[Node, Node] = {}
+    # 2. Get topological order of all nodes affecting the output
+    topo_order = topological_sort(output_node)
 
-    # The gradient of the output node is 1
-    grad_one = ones_like(output_node)  # or use a constant wrapper if available
-    node_to_grad[output_node] = grad_one
-
-    # Topological sort using reverse post-order DFS
-    visited = set()
-    topo_order = []
-
-    def dfs(node):
-        if node in visited:
-            return
-        visited.add(node)
-        for inp in node.inputs:
-            dfs(inp)
-        topo_order.append(node)
-
-    dfs(output_node)
-
-    # Traverse in reverse topological order (from output to input)
+    # 3. Traverse in reverse topological order
     for node in reversed(topo_order):
         if node not in node_to_grad:
-            continue  # No gradient needed
+            continue  # No gradient signal flows here
 
-        out_grad = node_to_grad[node]
-        input_grads = node.op.gradient(node, out_grad) if node.inputs else []
+        grad_out = node_to_grad[node]
 
-        for inp_node, inp_grad in zip(node.inputs, input_grads):
-            if inp_node in node_to_grad:
-                node_to_grad[inp_node] = node_to_grad[inp_node] + inp_grad
-            else:
-                node_to_grad[inp_node] = inp_grad
+        if getattr(node, "inputs", None):
+            # Compute gradients for each input using the op's gradient rule
+            input_grads = node.op.gradient(node, grad_out)
+            for inp, inp_grad in zip(node.inputs, input_grads):
+                if inp in node_to_grad:
+                    node_to_grad[inp] = node_to_grad[inp] + inp_grad
+                else:
+                    node_to_grad[inp] = inp_grad
 
-    # Return gradients for requested input nodes
-    return [node_to_grad.get(n, Variable(f"0")) for n in nodes]
+    # 4. Return the gradients for the requested nodes (0 if no grad)
+    return [node_to_grad.get(n, Variable("0")) for n in nodes]
