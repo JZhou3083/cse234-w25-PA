@@ -13,7 +13,70 @@ from torchvision import datasets, transforms
 
 max_len = 28
 
-def transformer(X: ad.Node, nodes: List[ad.Node], 
+def linear(x:ad.Node, w: ad.Node, b:ad.Node) -> ad.Node:
+    '''
+    Linear: y = x @ W +b
+    Shapes:
+    - If x is (B,S, D), W must be (D,D2), b must be broadcastable to (B, S ,D2)
+    - If x is (B,D), W must be (D, D2), b must be broadcastable to (B, D2)
+    '''
+    return ad.matmul(x, w)+b
+
+def single_head_self_atten(
+        X: ad.Node,
+        wq:ad.Node, bq,
+        wk: ad.Node, bk,
+        wv: ad.Node, bv,
+        *,
+        mask = None,
+        eps = 1e-9
+        ):
+    '''
+    Compute single-head self attention from input X using your ops.
+    X: (B,S,D)
+    W*: (D,D) and b*:(1,1,D)
+    returns: (B,S,D)
+    '''
+    Q = linear(X, wq,bq)
+    K = linear(X,wk, bk)
+    V = linear(X, wv, bv)
+    D = None
+    try:
+        D = K.dim1
+    except Exception:
+        pass
+
+    return scaled_dot_product_attention(Q,K,V,d_k = D, mask = mask, eps= eps)
+
+def scaled_dot_product_attention(
+        Q,K,V,
+        *,
+        d_k = None,
+        mask = None,
+        eps = 1e-9
+        ):
+    '''
+    Single-head attention.
+    Shapes:
+      Q,K,V: (B,S,D)
+      Returns: (B,S,D)
+    '''
+    KT = ad.transpose(K, dim0 = 1, dim1 = 2)
+
+    scores = ad.matmul(Q,KT)/ad.sqrt(d_k)
+    if mask:
+        scores = scores + mask
+
+    return ad.matmul(ad.softmax(scores, dim=-1),V)
+
+
+def feed_forward(X, w1, b1, w2, b2):
+
+    hidden = ad.relu(linear(X,w1,b1))
+    return linear(hidden, w2,b2)
+
+
+def transformer(X: ad.Node, nodes: List[ad.Node],
                       model_dim: int, seq_length: int, eps, batch_size, num_classes) -> ad.Node:
     """Construct the computational graph for a single transformer layer with sequence classification.
 
@@ -21,20 +84,53 @@ def transformer(X: ad.Node, nodes: List[ad.Node],
     ----------
     X: ad.Node
         A node in shape (batch_size, seq_length, model_dim), denoting the input data.
-    nodes: List[ad.Node]
-        Nodes you would need to initialize the transformer.
-    model_dim: int
-        Dimension of the model (hidden size).
-    seq_length: int
-        Length of the input sequence.
+    nodes: List[ad.Node] of parameters in the following order:
+        0   w_q     (D,D)   1,  b_q     (1,1,D)
+        2   w_k     (D,D)   3   b_k     (1,1,D)
+        4   w_v     (D,D)   5   b_v     (1,1,D)
+        6   w_o     (D,D)   7   b_o     (1,1,D)
+        8   w1      (D,Dff) 9   b1      (1,1,Dff)
+        10  w2      (Dff,D) 11  b2      (1,1,D)
+        12 gamma1   (1,1,D) 13  beta1   (1,1,D)
+        14 gamma2   (1,1,D) 15  beta2   (1,1,D)
+        16 w_cls    (D,C)   17  b_cls   (1,C)
 
+    model_dim   : D, Dimension of the model (hidden size).
+
+    seq_length  : S, Length of the input sequence.
+    eps         : LayerNorm epsilon
+    batch_size  : B
+    num_classes : C
     Returns
     -------
-    output: ad.Node
+    output: ad.Node (B , C)
         The output of the transformer layer, averaged over the sequence length for classification, in shape (batch_size, num_classes).
     """
 
     """TODO: Your code here"""
+    (w_q, b_q,
+     w_k, b_k,
+     w_v, b_v,
+     w_o, b_o,
+     w1,  b1,
+     w2,  b2,
+     gamma1, beta1,
+     gamma2, beta2,
+     w_cls, b_cls
+    ) = nodes
+
+    # self-attention
+    Q = linear(X, w_q, b_q)
+    K = linear(X, w_k, b_k)
+    V = linear(X, w_v, b_v)
+
+    atten = scaled_dot_product_attention(Q,K,V, d_k= model_dim)
+    atten_proj  = linear(atten, w_o, b_o)
+
+    # residual + LayerNorm
+    y1 = ad.layernorm(X+atten_proj)
+    return NotImplemented
+
 
 
 def softmax_loss(Z: ad.Node, y_one_hot: ad.Node, batch_size: int) -> ad.Node:
@@ -133,11 +229,11 @@ def sgd_epoch(
         end_idx = min(start_idx + batch_size, num_examples)
         X_batch = X[start_idx:end_idx, :max_len]
         y_batch = y[start_idx:end_idx]
-        
+
         # Compute forward and backward passes
         # TODO: Your code here
 
-        
+
         # Update weights and biases
         # TODO: Your code here
         # Hint: You can update the tensor using something like below:
@@ -148,7 +244,7 @@ def sgd_epoch(
 
 
     # Compute the average loss
-    
+
     average_loss = total_loss / num_examples
     print('Avg_loss:', average_loss)
 
@@ -171,7 +267,7 @@ def train_model():
     seq_length = max_len  # Number of rows in the MNIST image
     num_classes = 10 #
     model_dim = 128 #
-    eps = 1e-5 
+    eps = 1e-5
 
     # - Set up the training settings.
     num_epochs = 20
@@ -183,9 +279,9 @@ def train_model():
     y_predict: ad.Node = ... # TODO: The output of the forward pass
     y_groundtruth = ad.Variable(name="y")
     loss: ad.Node = softmax_loss(y_predict, y_groundtruth, batch_size)
-    
+
     # TODO: Construct the backward graph.
-    
+
 
     # TODO: Create the evaluator.
     grads: List[ad.Node] = ... # TODO: Define the gradient nodes here
