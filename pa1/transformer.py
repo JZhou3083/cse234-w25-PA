@@ -1,5 +1,6 @@
 import functools
-from typing import Callable, Tuple, List
+import math
+from typing import Callable, Tuple, List, Optional
 
 import numpy as np
 from sklearn.datasets import load_digits
@@ -51,10 +52,10 @@ def single_head_self_atten(
 def scaled_dot_product_attention(
         Q,K,V,
         *,
-        d_k = None,
-        mask = None,
-        eps = 1e-9
-        ):
+        d_k: Optional[int] = None,
+        mask: Optional["ad.Node"] = None,
+        eps: float = 1e-9
+        )-> ad.Node:
     '''
     Single-head attention.
     Shapes:
@@ -62,9 +63,13 @@ def scaled_dot_product_attention(
       Returns: (B,S,D)
     '''
     KT = ad.transpose(K, dim0 = 1, dim1 = 2)
+    if d_k is None:
+        # assume last dim
+        d_k = Q.shape[-1]
 
-    scores = ad.matmul(Q,KT)/ad.sqrt(d_k)
-    if mask:
+    scale = math.sqrt(d_k)+eps
+    scores = ad.matmul(Q,KT)/scale
+    if mask is not None:
         scores = scores + mask
 
     return ad.matmul(ad.softmax(scores, dim=-1),V)
@@ -112,26 +117,37 @@ def transformer(X: ad.Node, nodes: List[ad.Node],
      w_k, b_k,
      w_v, b_v,
      w_o, b_o,
-     w1,  b1,
-     w2,  b2,
+     w1, b1,
+     w2, b2,
      gamma1, beta1,
      gamma2, beta2,
-     w_cls, b_cls
-    ) = nodes
+     w_cls, b_cls) = nodes
+    # 1) Self-attention output
+    attn_out = single_head_self_atten(X, wq=w_q, bq=b_q, wk=w_k, bk=b_k, wv=w_v, bv=b_v, eps=eps)
 
-    # self-attention
-    Q = linear(X, w_q, b_q)
-    K = linear(X, w_k, b_k)
-    V = linear(X, w_v, b_v)
+    # 2) Attention output projection
+    attn_proj = linear(attn_out, w_o, b_o)  # shape (B, S, D)
 
-    atten = scaled_dot_product_attention(Q,K,V, d_k= model_dim)
-    atten_proj  = linear(atten, w_o, b_o)
+    # 3) LayerNorm 1
+    norm1 = ad.layernorm(attn_proj, normalized_shape=[model_dim], eps=eps)
+    norm1 = norm1 * gamma1 + beta1
 
-    # residual + LayerNorm
-    y1 = ad.layernorm(X+atten_proj)
-    return NotImplemented
+    # 4) Feed-forward network
+    ff_hidden = linear(norm1, w1, b1)
+    ff_relu = ad.relu(ff_hidden)
+    ff_out = linear(ff_relu, w2, b2)
 
+    # 5) LayerNorm 2
+    norm2 = ad.layernorm(ff_out, normalized_shape=[model_dim], eps=eps)
+    norm2 = norm2 * gamma2 + beta2
 
+    # 6) Pool over sequence length dimension (dim=1)
+    pooled = ad.mean(norm2, dim=1)  # shape (B, D)
+
+    # 7) Classification head (linear)
+    logits = linear(pooled, w_cls, b_cls)  # shape (B, C)
+
+    return logits
 
 def softmax_loss(Z: ad.Node, y_one_hot: ad.Node, batch_size: int) -> ad.Node:
     """Construct the computational graph of average softmax loss over
@@ -166,7 +182,25 @@ def softmax_loss(Z: ad.Node, y_one_hot: ad.Node, batch_size: int) -> ad.Node:
     """
     """TODO: Your code here"""
 
+     # Probabilities
+    probs = ad.softmax(Z)  # (B, C)
+    
+    # log(probs)
+    log_probs = ad.log(probs)  # (B, C)
+    
+    # sum(y_one_hot * log_probs) over classes
+    loss_per_sample = ad.sum_op(ad.mul(y_one_hot, log_probs), dim=(1,))  # (B,)
 
+    # sum over batch
+    total_loss = ad.sum_op(loss_per_sample, dim=(0,))  # scalar
+
+    # multiply by -1
+    total_loss = ad.mul_by_const(total_loss, -1.0)
+    
+    # average over batch
+    loss = ad.div_by_const(total_loss, batch_size)  # scalar ()
+
+    return loss
 
 def sgd_epoch(
     f_run_model: Callable,
@@ -175,7 +209,7 @@ def sgd_epoch(
     model_weights: List[torch.Tensor],
     batch_size: int,
     lr: float,
-) -> List[torch.Tensor]:
+) ->Tuple[List[torch.Tensor], float]:
     """Run an epoch of SGD for the logistic regression model
     on training data with regard to the given mini-batch size
     and learning rate.
@@ -232,15 +266,19 @@ def sgd_epoch(
 
         # Compute forward and backward passes
         # TODO: Your code here
+        # Forward + backward pass
+        logits, loss, grads = f_run_model(X_batch, y_batch, model_weights)
 
 
         # Update weights and biases
         # TODO: Your code here
         # Hint: You can update the tensor using something like below:
         # W_Q -= lr * grad_W_Q.sum(dim=0)
+        for w, g in zip(model_weights, grads):
+            w -= lr * g  # in-place update
 
         # Accumulate the loss
-        # TODO: Your code here
+        total_loss += loss.item() * X_batch.shape[0]
 
 
     # Compute the average loss
@@ -250,6 +288,7 @@ def sgd_epoch(
 
     # TODO: Your code here
     # You should return the list of parameters and the loss
+    print("Avg_loss:", average_loss)
     return model_weights, average_loss
 
 def train_model():
@@ -275,8 +314,43 @@ def train_model():
     lr = 0.02
 
     # TODO: Define the forward graph.
+    # Symbolic input and output variables
+    X = ad.Variable(name="X")
+    y_groundtruth = ad.Variable(name="y")
 
-    y_predict: ad.Node = ... # TODO: The output of the forward pass
+    # Input variable placeholders
+    X = ad.Variable(name="X")
+    y_groundtruth = ad.Variable(name="y")
+
+    # Weight variables initialized with numpy arrays
+    W_Q = ad.Variable(name="W_Q")
+    W_Q.value = W_Q_val  # assign initial numpy values to the .value attribute
+  
+    W_K = ad.Variable(name="W_K")
+    W_K.value = W_K_val
+
+    W_V = ad.Variable(name="W_V")
+    W_V.value = W_V_val
+
+    W_O = ad.Variable(name="W_O")
+    W_O.value = W_O_val
+
+    W_1 = ad.Variable(name="W_1")
+    W_1.value = b_1_val
+
+    W_2 = ad.Variable(name="W_2")
+    W_2.value = W_2_val
+
+    b_1 = ad.Variable(name="b_1")
+    b_1.value = b_1_val
+
+    b_2 = ad.Variable(name="b_2")
+    b_2.value = b_2_val
+
+
+    model_weights = [W_Q, W_K, W_V, W_O, W_1, W_2, b_1, b_2]
+
+    y_predict = transformer(X, model_weights, model_dim, seq_length, eps, batch_size, num_classes)  # TODO: The output of the forward pass
     y_groundtruth = ad.Variable(name="y")
     loss: ad.Node = softmax_loss(y_predict, y_groundtruth, batch_size)
 
