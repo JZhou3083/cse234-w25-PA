@@ -318,37 +318,64 @@ def train_model():
     X = ad.Variable(name="X")
     y_groundtruth = ad.Variable(name="y")
 
-    # Input variable placeholders
-    X = ad.Variable(name="X")
-    y_groundtruth = ad.Variable(name="y")
+    # Initialize model weights BEFORE assigning them to ad.Variable
+    np.random.seed(0)
+    # weight initializations
+    D = model_dim
+    D_ff = model_dim  # or some other feed-forward dimension
+    C = num_classes
+    stdv = 1.0 / np.sqrt(D)
+    W_Q_val    = np.random.uniform(-stdv, stdv, (D, D))
+    b_Q_val    = np.random.uniform(-stdv, stdv, (1, 1, D))
+    W_K_val    = np.random.uniform(-stdv, stdv, (D, D))
+    b_K_val    = np.random.uniform(-stdv, stdv, (1, 1, D))
+    W_V_val    = np.random.uniform(-stdv, stdv, (D, D))
+    b_V_val    = np.random.uniform(-stdv, stdv, (1, 1, D))
+    W_O_val    = np.random.uniform(-stdv, stdv, (D, D))
+    b_O_val    = np.random.uniform(-stdv, stdv, (1, 1, D))
+    W1_val     = np.random.uniform(-stdv, stdv, (D, D_ff))
+    b1_val     = np.random.uniform(-stdv, stdv, (1, 1, D_ff))
+    W2_val     = np.random.uniform(-stdv, stdv, (D_ff, D))
+    b2_val     = np.random.uniform(-stdv, stdv, (1, 1, D))
+    gamma1_val = np.ones((1, 1, D))
+    beta1_val  = np.zeros((1, 1, D))
+    gamma2_val = np.ones((1, 1, D))
+    beta2_val  = np.zeros((1, 1, D))
+    W_cls_val  = np.random.uniform(-stdv, stdv, (D, C))
+    b_cls_val  = np.random.uniform(-stdv, stdv, (1, C))
 
-    # Weight variables initialized with numpy arrays
-    W_Q = ad.Variable(name="W_Q")
-    W_Q.value = W_Q_val  # assign initial numpy values to the .value attribute
-  
-    W_K = ad.Variable(name="W_K")
-    W_K.value = W_K_val
+    # create Variables and assign
+    W_Q    = ad.Variable(name="W_Q");    W_Q.value = W_Q_val
+    b_Q    = ad.Variable(name="b_Q");    b_Q.value = b_Q_val
+    W_K    = ad.Variable(name="W_K");    W_K.value = W_K_val
+    b_K    = ad.Variable(name="b_K");    b_K.value = b_K_val
+    W_V    = ad.Variable(name="W_V");    W_V.value = W_V_val
+    b_V    = ad.Variable(name="b_V");    b_V.value = b_V_val
+    W_O    = ad.Variable(name="W_O");    W_O.value = W_O_val
+    b_O    = ad.Variable(name="b_O");    b_O.value = b_O_val
+    W1     = ad.Variable(name="W1");     W1.value = W1_val
+    b1     = ad.Variable(name="b1");     b1.value = b1_val
+    W2     = ad.Variable(name="W2");     W2.value = W2_val
+    b2     = ad.Variable(name="b2");     b2.value = b2_val
+    gamma1 = ad.Variable(name="gamma1"); gamma1.value = gamma1_val
+    beta1  = ad.Variable(name="beta1");  beta1.value = beta1_val
+    gamma2 = ad.Variable(name="gamma2"); gamma2.value = gamma2_val
+    beta2  = ad.Variable(name="beta2");  beta2.value = beta2_val
+    W_cls  = ad.Variable(name="W_cls");  W_cls.value = W_cls_val
+    b_cls  = ad.Variable(name="b_cls");  b_cls.value = b_cls_val
 
-    W_V = ad.Variable(name="W_V")
-    W_V.value = W_V_val
-
-    W_O = ad.Variable(name="W_O")
-    W_O.value = W_O_val
-
-    W_1 = ad.Variable(name="W_1")
-    W_1.value = b_1_val
-
-    W_2 = ad.Variable(name="W_2")
-    W_2.value = W_2_val
-
-    b_1 = ad.Variable(name="b_1")
-    b_1.value = b_1_val
-
-    b_2 = ad.Variable(name="b_2")
-    b_2.value = b_2_val
-
-
-    model_weights = [W_Q, W_K, W_V, W_O, W_1, W_2, b_1, b_2]
+    # final model_weights in correct order
+    model_weights = [
+        W_Q, b_Q,
+        W_K, b_K,
+        W_V, b_V,
+        W_O, b_O,
+        W1, b1,
+        W2, b2,
+        gamma1, beta1,
+        gamma2, beta2,
+        W_cls, b_cls
+    ]
 
     y_predict = transformer(X, model_weights, model_dim, seq_length, eps, batch_size, num_classes)  # TODO: The output of the forward pass
     y_groundtruth = ad.Variable(name="y")

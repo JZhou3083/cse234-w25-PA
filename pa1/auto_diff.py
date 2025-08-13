@@ -571,7 +571,7 @@ class SoftmaxOp(Op):
             inputs=[node_A],
             op=self,
             attrs={"dim": dim},
-            name=f"Softmax({node_A.name})",
+             name=f"Softmax({node_A.name})",
         )
 
     def compute(self, node: Node, input_values: List[torch.Tensor]) -> torch.Tensor:
