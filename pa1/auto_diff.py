@@ -864,7 +864,7 @@ class Evaluator:
             if node in input_values:
                 # Value provided by user
                 computed_values[node] = input_values[node]
-            elif getattr(node, "inputs", None):
+            elif getattr(node, "inputs", []):
                 # Compute from inputs
                 input_vals = [computed_values[inp] for inp in node.inputs]
                 computed_values[node] = node.op.compute(node, input_vals)
@@ -914,4 +914,4 @@ def gradients(output_node: "Node", nodes: List["Node"]) -> List["Node"]:
                     node_to_grad[inp] = inp_grad
 
     # 4. Return the gradients for the requested nodes (0 if no grad)
-    return [node_to_grad.get(n, Variable("0")) for n in nodes]
+    return [node_to_grad.get(n, zeros_like(n)) for n in nodes]
