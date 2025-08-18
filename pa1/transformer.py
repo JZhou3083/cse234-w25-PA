@@ -129,9 +129,7 @@ def transformer(X: ad.Node, nodes: List[ad.Node],
     attn_proj = linear(attn_out, w_o, b_o)  # shape (B, S, D)
 
     # 3) Feed-forward network
-    ff_hidden = linear(attn_proj, w1, b1)   # shape (B, S, Dff)
-    ff_relu = ad.relu(ff_hidden)
-    ff_out = linear(ff_relu, w2, b2)        # shape (B, S, D)
+    ff_out = feed_forward(attn_proj, w1, b1, w2, b2) # shape (B, S, D)
 
     # 4) Pool over sequence length
     pooled = ad.mean(ff_out, dim=1)         # shape (B, D)
