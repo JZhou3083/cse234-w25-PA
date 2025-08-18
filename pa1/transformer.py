@@ -28,6 +28,7 @@ def single_head_self_atten(
         wq:ad.Node, bq,
         wk: ad.Node, bk,
         wv: ad.Node, bv,
+        d_k: int,
         *,
         mask = None,
         eps = 1e-9
@@ -41,18 +42,13 @@ def single_head_self_atten(
     Q = linear(X, wq,bq)
     K = linear(X,wk, bk)
     V = linear(X, wv, bv)
-    D = None
-    try:
-        D = K.dim1
-    except Exception:
-        pass
 
-    return scaled_dot_product_attention(Q,K,V,d_k = D, mask = mask, eps= eps)
+    return scaled_dot_product_attention(Q,K,V,d_k = d_k, mask = mask, eps= eps)
 
 def scaled_dot_product_attention(
         Q,K,V,
         *,
-        d_k: Optional[int] = None,
+        d_k: int,
         mask: Optional["ad.Node"] = None,
         eps: float = 1e-9
         )-> ad.Node:
@@ -63,11 +59,8 @@ def scaled_dot_product_attention(
       Returns: (B,S,D)
     '''
     KT = ad.transpose(K, dim0 = 1, dim1 = 2)
-    if d_k is None:
-        # assume last dim
-        d_k = Q.shape[-1]
 
-    scale = math.sqrt(d_k)+eps
+    scale = math.sqrt(d_k)
     scores = ad.matmul(Q,KT)/scale
     if mask is not None:
         scores = scores + mask
@@ -113,6 +106,7 @@ def transformer(X: ad.Node, nodes: List[ad.Node],
     """
 
     """TODO: Your code here"""
+        # Unpack nodes
     (w_q, b_q,
      w_k, b_k,
      w_v, b_v,
@@ -122,30 +116,28 @@ def transformer(X: ad.Node, nodes: List[ad.Node],
      gamma1, beta1,
      gamma2, beta2,
      w_cls, b_cls) = nodes
+
+    # Set d_k and d_v for single-head attention
+    d_k = model_dim
+    d_v = model_dim
     # 1) Self-attention output
-    attn_out = single_head_self_atten(X, wq=w_q, bq=b_q, wk=w_k, bk=b_k, wv=w_v, bv=b_v, eps=eps)
+    attn_out = single_head_self_atten(
+        X, wq=w_q, bq=b_q, d_k=d_k, wk=w_k, bk=b_k, wv=w_v, bv=b_v, eps=eps
+    )
 
     # 2) Attention output projection
     attn_proj = linear(attn_out, w_o, b_o)  # shape (B, S, D)
 
-    # 3) LayerNorm 1
-    norm1 = ad.layernorm(attn_proj, normalized_shape=[model_dim], eps=eps)
-    norm1 = norm1 * gamma1 + beta1
-
-    # 4) Feed-forward network
-    ff_hidden = linear(norm1, w1, b1)
+    # 3) Feed-forward network
+    ff_hidden = linear(attn_proj, w1, b1)   # shape (B, S, Dff)
     ff_relu = ad.relu(ff_hidden)
-    ff_out = linear(ff_relu, w2, b2)
+    ff_out = linear(ff_relu, w2, b2)        # shape (B, S, D)
 
-    # 5) LayerNorm 2
-    norm2 = ad.layernorm(ff_out, normalized_shape=[model_dim], eps=eps)
-    norm2 = norm2 * gamma2 + beta2
+    # 4) Pool over sequence length
+    pooled = ad.mean(ff_out, dim=1)         # shape (B, D)
 
-    # 6) Pool over sequence length dimension (dim=1)
-    pooled = ad.mean(norm2, dim=1)  # shape (B, D)
-
-    # 7) Classification head (linear)
-    logits = linear(pooled, w_cls, b_cls)  # shape (B, C)
+    # 5) Classification head
+    logits = linear(pooled, w_cls, b_cls)   # shape (B, C)
 
     return logits
 
