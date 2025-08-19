@@ -113,8 +113,6 @@ def transformer(X: ad.Node, nodes: List[ad.Node],
      w_o, b_o,
      w1, b1,
      w2, b2,
-     gamma1, beta1,
-     gamma2, beta2,
      w_cls, b_cls) = nodes
 
     # Set d_k and d_v for single-head attention
@@ -173,8 +171,8 @@ def softmax_loss(Z: ad.Node, y_one_hot: ad.Node, batch_size: int) -> ad.Node:
     """TODO: Your code here"""
 
      # Probabilities
-    probs = ad.softmax(Z)  # (B, C)
-    
+    probs = ad.softmax(Z, dim=1)  # (B, C)
+
     # log(probs)
     log_probs = ad.log(probs)  # (B, C)
     
@@ -249,8 +247,9 @@ def sgd_epoch(
     for i in range(num_batches):
         # Get the mini-batch data
         start_idx = i * batch_size
-        if start_idx + batch_size> num_examples:continue
+        # if start_idx + batch_size> num_examples:continue
         end_idx = min(start_idx + batch_size, num_examples)
+
         X_batch = X[start_idx:end_idx, :max_len]
         y_batch = y[start_idx:end_idx]
 
@@ -296,86 +295,47 @@ def train_model():
     seq_length = max_len  # Number of rows in the MNIST image
     num_classes = 10 #
     model_dim = 128 #
-    eps = 1e-5
+    eps = 1e-5 
 
     # - Set up the training settings.
     num_epochs = 20
     batch_size = 50
     lr = 0.02
 
-    # TODO: Define the forward graph.
-    # Symbolic input and output variables
-    X = ad.Variable(name="X")
-    y_groundtruth = ad.Variable(name="y")
+    # TODO: Define the variables
+    X_var = ad.Variable(name="X", shape=(batch_size, seq_length, input_dim))  # input batch
+    y_groundtruth = ad.Variable(name="y", shape=(batch_size, num_classes))   # one-hot labels
 
-    # Initialize model weights BEFORE assigning them to ad.Variable
-    np.random.seed(0)
-    # weight initializations
-    D = model_dim
-    D_ff = model_dim  # or some other feed-forward dimension
-    C = num_classes
-    stdv = 1.0 / np.sqrt(D)
-    W_Q_val    = np.random.uniform(-stdv, stdv, (D, D))
-    b_Q_val    = np.random.uniform(-stdv, stdv, (1, 1, D))
-    W_K_val    = np.random.uniform(-stdv, stdv, (D, D))
-    b_K_val    = np.random.uniform(-stdv, stdv, (1, 1, D))
-    W_V_val    = np.random.uniform(-stdv, stdv, (D, D))
-    b_V_val    = np.random.uniform(-stdv, stdv, (1, 1, D))
-    W_O_val    = np.random.uniform(-stdv, stdv, (D, D))
-    b_O_val    = np.random.uniform(-stdv, stdv, (1, 1, D))
-    W1_val     = np.random.uniform(-stdv, stdv, (D, D_ff))
-    b1_val     = np.random.uniform(-stdv, stdv, (1, 1, D_ff))
-    W2_val     = np.random.uniform(-stdv, stdv, (D_ff, D))
-    b2_val     = np.random.uniform(-stdv, stdv, (1, 1, D))
-    gamma1_val = np.ones((1, 1, D))
-    beta1_val  = np.zeros((1, 1, D))
-    gamma2_val = np.ones((1, 1, D))
-    beta2_val  = np.zeros((1, 1, D))
-    W_cls_val  = np.random.uniform(-stdv, stdv, (D, C))
-    b_cls_val  = np.random.uniform(-stdv, stdv, (1, C))
+    # Define the forward graph.
+    # Parameters (in the same order as transformer() expects)
+    # pack model parameters as ad.Variable
+    # Model weights
+    W_Q = ad.Variable(name="W_Q", shape=(input_dim, model_dim))
+    b_Q = ad.Variable(name="b_Q", shape=(1, 1, model_dim))  # broadcastable bias
+    W_K = ad.Variable(name="W_K", shape=(input_dim, model_dim))
+    b_K = ad.Variable(name="b_K", shape=(1, 1, model_dim))
+    W_V = ad.Variable(name="W_V", shape=(input_dim, model_dim))
+    b_V = ad.Variable(name="b_V", shape=(1, 1, model_dim))
+    W_O = ad.Variable(name="W_O", shape=(model_dim, model_dim))
+    b_O = ad.Variable(name="b_O", shape=(1, 1, model_dim))
+    W_1 = ad.Variable(name="W1", shape=(model_dim, model_dim))
+    b_1 = ad.Variable(name="b1", shape=(1, 1, model_dim))
+    W_2 = ad.Variable(name="W2", shape=(model_dim, num_classes))
+    b_2 = ad.Variable(name="b2", shape=(1, num_classes))
+    W_cls = ad.Variable(name="W_cls", shape=(model_dim, num_classes))
+    b_cls = ad.Variable(name="b_cls", shape=(1, num_classes))
+    # Construct the transformer model
+    # ---- Forward graph ----
+    y_predict = transformer(X_var, [W_Q, b_Q, W_K, b_K, W_V, b_V, W_O, b_O,
+         W_1, b_1, W_2, b_2, W_cls, b_cls], model_dim, seq_length, eps, batch_size, num_classes)
 
-    # create Variables and assign
-    W_Q    = ad.Variable(name="W_Q");    W_Q.value = W_Q_val
-    b_Q    = ad.Variable(name="b_Q");    b_Q.value = b_Q_val
-    W_K    = ad.Variable(name="W_K");    W_K.value = W_K_val
-    b_K    = ad.Variable(name="b_K");    b_K.value = b_K_val
-    W_V    = ad.Variable(name="W_V");    W_V.value = W_V_val
-    b_V    = ad.Variable(name="b_V");    b_V.value = b_V_val
-    W_O    = ad.Variable(name="W_O");    W_O.value = W_O_val
-    b_O    = ad.Variable(name="b_O");    b_O.value = b_O_val
-    W1     = ad.Variable(name="W1");     W1.value = W1_val
-    b1     = ad.Variable(name="b1");     b1.value = b1_val
-    W2     = ad.Variable(name="W2");     W2.value = W2_val
-    b2     = ad.Variable(name="b2");     b2.value = b2_val
-    gamma1 = ad.Variable(name="gamma1"); gamma1.value = gamma1_val
-    beta1  = ad.Variable(name="beta1");  beta1.value = beta1_val
-    gamma2 = ad.Variable(name="gamma2"); gamma2.value = gamma2_val
-    beta2  = ad.Variable(name="beta2");  beta2.value = beta2_val
-    W_cls  = ad.Variable(name="W_cls");  W_cls.value = W_cls_val
-    b_cls  = ad.Variable(name="b_cls");  b_cls.value = b_cls_val
-
-    # final model_weights in correct order
-    model_weights = [
-        W_Q, b_Q,
-        W_K, b_K,
-        W_V, b_V,
-        W_O, b_O,
-        W1, b1,
-        W2, b2,
-        gamma1, beta1,
-        gamma2, beta2,
-        W_cls, b_cls
-    ]
-
-    y_predict = transformer(X, model_weights, model_dim, seq_length, eps, batch_size, num_classes)  # TODO: The output of the forward pass
-    y_groundtruth = ad.Variable(name="y")
     loss: ad.Node = softmax_loss(y_predict, y_groundtruth, batch_size)
+    
 
-    # TODO: Construct the backward graph.
-
-
-    # TODO: Create the evaluator.
-    grads: List[ad.Node] = ... # TODO: Define the gradient nodes here
+    # TODO: Define the gradient nodes here
+    grads: List[ad.Node] = ad.gradients(loss, [W_Q, b_Q, W_K, b_K, W_V, b_V, W_O, b_O,
+                                               W_1, b_1, W_2, b_2, W_cls, b_cls])
+     
     evaluator = ad.Evaluator([y_predict, loss, *grads])
     test_evaluator = ad.Evaluator([y_predict])
 
@@ -410,33 +370,49 @@ def train_model():
     # Initialize model weights.
     np.random.seed(0)
     stdv = 1.0 / np.sqrt(num_classes)
-    W_Q_val = np.random.uniform(-stdv, stdv, (input_dim, model_dim))
-    W_K_val = np.random.uniform(-stdv, stdv, (input_dim, model_dim))
-    W_V_val = np.random.uniform(-stdv, stdv, (input_dim, model_dim))
-    W_O_val = np.random.uniform(-stdv, stdv, (model_dim, model_dim))
-    W_1_val = np.random.uniform(-stdv, stdv, (model_dim, model_dim))
-    W_2_val = np.random.uniform(-stdv, stdv, (model_dim, num_classes))
-    b_1_val = np.random.uniform(-stdv, stdv, (model_dim,))
-    b_2_val = np.random.uniform(-stdv, stdv, (num_classes,))
+    model_weights: List[torch.Tensor] = [
+        torch.tensor(np.random.uniform(-stdv, stdv, (input_dim, model_dim)), dtype=torch.float32, requires_grad=False),  # W_Q
+        torch.zeros(1, 1, model_dim),  # b_Q
+        torch.tensor(np.random.uniform(-stdv, stdv, (input_dim, model_dim)), dtype=torch.float32),  # W_K
+        torch.zeros(1, 1, model_dim),  # b_K
+        torch.tensor(np.random.uniform(-stdv, stdv, (input_dim, model_dim)), dtype=torch.float32),  # W_V
+        torch.zeros(1, 1, model_dim),  # b_V
+        torch.tensor(np.random.uniform(-stdv, stdv, (model_dim, model_dim)), dtype=torch.float32),  # W_O
+        torch.zeros(1, 1, model_dim),  # b_O
+        torch.tensor(np.random.uniform(-stdv, stdv, (model_dim, model_dim)), dtype=torch.float32),  # W1
+        torch.zeros(1, 1, model_dim),  # b1
+        torch.tensor(np.random.uniform(-stdv, stdv, (model_dim, num_classes)), dtype=torch.float32),  # W2
+        torch.zeros(1, num_classes),  # b2
+        torch.tensor(np.random.uniform(-stdv, stdv, (model_dim, num_classes)), dtype=torch.float32),  # W_cls
+        torch.zeros(1, num_classes),  # b_cls
+    ]
 
-    def f_run_model(model_weights):
+    def f_run_model(X_batch, y_batch, model_weights):
         """The function to compute the forward and backward graph.
         It returns the logits, loss, and gradients for model weights.
         """
         result = evaluator.run(
             input_values={
-                # TODO: Fill in the mapping from variable to tensor
-
+            # TODO: Fill in the mapping from variable to tensor
+            X_var: X_batch,
+            y_groundtruth: y_batch,
+            W_Q: model_weights[0], b_Q: model_weights[1],
+            W_K: model_weights[2], b_K: model_weights[3],
+            W_V: model_weights[4], b_V: model_weights[5],
+            W_O: model_weights[6], b_O: model_weights[7],
+            W_1: model_weights[8], b_1: model_weights[9],
+            W_2: model_weights[10], b_2: model_weights[11],
+            W_cls: model_weights[12], b_cls: model_weights[13],
 
             }
         )
-        return result
+        y_pred_val, loss_val, *grad_vals = result
+        return y_pred_val, loss_val, grad_vals
 
     def f_eval_model(X_val, model_weights: List[torch.Tensor]):
         """The function to compute the forward graph only and returns the prediction."""
         num_examples = X_val.shape[0]
         num_batches = (num_examples + batch_size - 1) // batch_size  # Compute the number of batches
-        total_loss = 0.0
         all_logits = []
         for i in range(num_batches):
             # Get the mini-batch data
@@ -445,8 +421,15 @@ def train_model():
             end_idx = min(start_idx + batch_size, num_examples)
             X_batch = X_val[start_idx:end_idx, :max_len]
             logits = test_evaluator.run({
-                # TODO: Fill in the mapping from variable to tensor
-
+            # TODO: Fill in the mapping from variable to tensor
+            X_var: X_batch,  # your input node
+            W_Q: model_weights[0], b_Q: model_weights[1],
+            W_K: model_weights[2], b_K: model_weights[3],
+            W_V: model_weights[4], b_V: model_weights[5],
+            W_O: model_weights[6], b_O: model_weights[7],
+            W_1: model_weights[8], b_1: model_weights[9],
+            W_2: model_weights[10], b_2: model_weights[11],
+            W_cls: model_weights[12], b_cls: model_weights[13],
 
             })
             all_logits.append(logits[0])
@@ -455,9 +438,10 @@ def train_model():
         predictions = np.argmax(concatenated_logits, axis=1)
         return predictions
 
-    # Train the model.
-    X_train, X_test, y_train, y_test= torch.tensor(X_train), torch.tensor(X_test), torch.DoubleTensor(y_train), torch.DoubleTensor(y_test)
-    model_weights: List[torch.Tensor] = [] # TODO: Initialize the model weights here
+    # Convert datasets to torch tensors
+    X_train, X_test = torch.tensor(X_train, dtype=torch.float32), torch.tensor(X_test, dtype=torch.float32)
+    y_train, y_test = torch.tensor(y_train, dtype=torch.float32), torch.tensor(y_test, dtype=torch.long)
+
     for epoch in range(num_epochs):
         X_train, y_train = shuffle(X_train, y_train)
         model_weights, loss_val = sgd_epoch(
@@ -474,7 +458,6 @@ def train_model():
     # Return the final test accuracy.
     predict_label = f_eval_model(X_test, model_weights)
     return np.mean(predict_label == y_test.numpy())
-
 
 if __name__ == "__main__":
     print(f"Final test accuracy: {train_model()}")
