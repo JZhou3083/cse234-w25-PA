@@ -303,27 +303,27 @@ def train_model():
     lr = 0.02
 
     # TODO: Define the variables
-    X_var = ad.Variable(name="X", shape=(batch_size, seq_length, input_dim))  # input batch
-    y_groundtruth = ad.Variable(name="y", shape=(batch_size, num_classes))   # one-hot labels
+    X_var = ad.Variable(name="X")  # input batch
+    y_groundtruth = ad.Variable(name="y")   # one-hot labels
 
     # Define the forward graph.
     # Parameters (in the same order as transformer() expects)
     # pack model parameters as ad.Variable
     # Model weights
-    W_Q = ad.Variable(name="W_Q", shape=(input_dim, model_dim))
-    b_Q = ad.Variable(name="b_Q", shape=(1, 1, model_dim))  # broadcastable bias
-    W_K = ad.Variable(name="W_K", shape=(input_dim, model_dim))
-    b_K = ad.Variable(name="b_K", shape=(1, 1, model_dim))
-    W_V = ad.Variable(name="W_V", shape=(input_dim, model_dim))
-    b_V = ad.Variable(name="b_V", shape=(1, 1, model_dim))
-    W_O = ad.Variable(name="W_O", shape=(model_dim, model_dim))
-    b_O = ad.Variable(name="b_O", shape=(1, 1, model_dim))
-    W_1 = ad.Variable(name="W1", shape=(model_dim, model_dim))
-    b_1 = ad.Variable(name="b1", shape=(1, 1, model_dim))
-    W_2 = ad.Variable(name="W2", shape=(model_dim, num_classes))
-    b_2 = ad.Variable(name="b2", shape=(1, num_classes))
-    W_cls = ad.Variable(name="W_cls", shape=(model_dim, num_classes))
-    b_cls = ad.Variable(name="b_cls", shape=(1, num_classes))
+    W_Q = ad.Variable(name="W_Q")
+    b_Q = ad.Variable(name="b_Q")  # broadcastable bias
+    W_K = ad.Variable(name="W_K")
+    b_K = ad.Variable(name="b_K")
+    W_V = ad.Variable(name="W_V")
+    b_V = ad.Variable(name="b_V")
+    W_O = ad.Variable(name="W_O")
+    b_O = ad.Variable(name="b_O")
+    W_1 = ad.Variable(name="W1")
+    b_1 = ad.Variable(name="b1")
+    W_2 = ad.Variable(name="W2")
+    b_2 = ad.Variable(name="b2")
+    W_cls = ad.Variable(name="W_cls")
+    b_cls = ad.Variable(name="b_cls")
     # Construct the transformer model
     # ---- Forward graph ----
     y_predict = transformer(X_var, [W_Q, b_Q, W_K, b_K, W_V, b_V, W_O, b_O,
