@@ -787,40 +787,35 @@ expand_as_3d = ExpandAsOp3d()
 log = LogOp()
 sub = SubOp()
 broadcast = BroadcastOp()
-
 def topological_sort(nodes):
-    """Helper function to perform topological sort on nodes.
+    '''
+    Helper function to perfomr topological sort on nodes.
 
     Parameters
     ----------
-    nodes : List[Node] or Node
-        Node(s) to sort
+    nodes: List[Node] or Node 
+        Node(s) to sort 
 
     Returns
-    -------
+    ----------
     List[Node]
-        Nodes in topological order
-    """
-    """TODO: your code here"""
-    # Ensure we're working with a list
-    if not isinstance(nodes, (list, tuple)):
-        nodes = [nodes]
-
+        Nodes in topological order.
+    '''
+    if not isinstance(nodes, (List, tuple)):
+        nodes = list(nodes)
     visited = set()
-    order = []
-
+    order = [] 
     def dfs(node):
         if node in visited:
-            return
+            return 
         visited.add(node)
-        for inp in getattr(node, "inputs", []):
-            dfs(inp)
+        for input in getattr(node, 'inputs', []):
+            dfs(input)
         order.append(node)
 
-    for n in nodes:
-        dfs(n)
-
-    return order  # Already in reverse post-order
+    for node in nodes:
+        dfs(node)
+    return order 
 
 class Evaluator:
     """The node evaluator that computes the values of nodes in a computational graph."""

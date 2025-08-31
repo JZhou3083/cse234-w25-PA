@@ -85,6 +85,57 @@ def test_mul_by_const():
         ],
     )
 
+def test_greater():
+    x1 = ad.Variable("x1")
+    x2 = ad.Variable("x2")
+    y = ad.greater(x1, x2)
+    evaluator = ad.Evaluator(eval_nodes=[y])
+
+    check_evaluator_output(
+        evaluator,
+        input_values={
+            x1: torch.tensor([[-1.0, 2.0, 0.5, 3.4], [0.3, 0.0, -5.8, 3.1]]),
+            x2: torch.tensor([[2.8, 0.7, -0.1, 0.0], [0.6, 6.6, 3.2, 3.1]]),
+        },
+        expected_outputs=[
+           torch.tensor([[0, 1, 1, 1], [0, 0, 0, 0]]).float()
+        ],
+    )
+
+def test_sub():
+    x1 = ad.Variable("x1")
+    x2 = ad.Variable("x2")
+    y = ad.sub(x1, x2)
+    evaluator = ad.Evaluator(eval_nodes=[y])
+
+    check_evaluator_output(
+        evaluator,
+        input_values={
+            x1: torch.tensor([[-1.0, 2.0, 0.5, 3.4], [0.3, 0.0, -5.8, 3.1]]),
+            x2: torch.tensor([[2.8, 0.7, -0.1, 0.0], [0.6, 6.6, 3.2, 3.1]]),
+        },
+        expected_outputs= [torch.tensor([[-3.8, 1.3, 0.6, 3.4], [-0.3, -6.6, -9.0, 0.0]])],
+    )
+
+def test_zeros_like():
+    x1 = ad.Variable("x1")
+    y = ad.zeros_like(x1)
+    evaluator = ad.Evaluator(eval_nodes=[y])
+    check_evaluator_output(
+        evaluator,
+        input_values={x1: torch.tensor([[-1.0, 2.0, 0.5, 3.4], [0.3, 0.0, -5.8, 3.1],[6,2,32,3]])},
+        expected_outputs=[torch.tensor([[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],[0,0,0,0]])],
+    )
+
+def test_ones_like():
+    x1 = ad.Variable("x1")
+    y = ad.ones_like(x1)
+    evaluator = ad.Evaluator(eval_nodes=[y])
+    check_evaluator_output(
+        evaluator,
+        input_values={x1: torch.tensor([[-1.0, 2.0, 0.5, 3.4], [0.3, 0.0, -5.8, 3.1],[6,2,32,3]])},
+        expected_outputs=[torch.tensor([[1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0],[1,1,1,1]])],
+    )
 
 def test_div():
     x1 = ad.Variable("x1")
@@ -169,13 +220,13 @@ def test_sqrt():
 
 if __name__ == "__main__":
     test_identity()
-    test_add()
-    test_add_by_const()
-    test_mul()
-    test_mul_by_const()
-    test_div()
-    test_div_by_const()
-    test_matmul()
-    test_sqrt()
+    # test_add()
+    # test_add_by_const()
+    # test_mul()
+    # test_mul_by_const()
+    # test_div()
+    # test_div_by_const()
+    # test_matmul()
+    # test_sqrt()
 
-    test_graph()
+    # test_graph()
