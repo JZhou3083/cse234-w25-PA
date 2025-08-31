@@ -38,7 +38,6 @@ def test_add_by_const():
         torch.tensor([[1.0, 4.0, 2.5, 5.4], [2.3, 2.0, -3.8, 5.1]]),
     )
 
-
 def test_mul():
     x1 = ad.Variable("x1")
     x2 = ad.Variable("x2")
@@ -250,7 +249,6 @@ def test_matmul_3d():
         expected
     )
 
-
 def test_layernorm():
     x = ad.Variable("x")
     y = ad.layernorm(x, normalized_shape=[3])
@@ -260,7 +258,6 @@ def test_layernorm():
         [torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=torch.float32)],
         torch.tensor([[-1.224745, 0.0, 1.224745], [-1.224745, 0.0, 1.224745]], dtype=torch.float32)
     )
-
 
 def test_relu():
     x = ad.Variable("x")
@@ -323,6 +320,33 @@ def test_power():
         y,
         [torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32)],
         torch.tensor([[1.0, 4.0], [9.0, 16.0]], dtype=torch.float32)
+    )
+
+def test_mean():
+    x = ad.Variable("x")
+    y1 = ad.mean(x, dim=(0,),keepdim=True)
+    y1_f = ad.mean(x, dim=(0,))
+    y2 = ad.mean(x, dim=(1,),keepdim=True)
+    y2_f = ad.mean(x, dim=(1,),keepdim=False)
+    check_compute_output(
+        y1,
+        [torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32)],
+        torch.tensor([[2.0, 3.0]], dtype=torch.float32)
+    )
+    check_compute_output(
+        y1_f,
+        [torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32)],
+        torch.tensor([2.0, 3.0], dtype=torch.float32)
+    )
+    check_compute_output(
+        y2,
+        [torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32)],
+        torch.tensor([[1.5], [3.5]], dtype=torch.float32)
+    )
+    check_compute_output(
+        y2_f,
+        [torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32)],
+        torch.tensor([1.5, 3.5], dtype=torch.float32)
     )
 
 if __name__ == "__main__":
