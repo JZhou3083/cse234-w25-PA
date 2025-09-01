@@ -326,7 +326,7 @@ class SumOp(Op):
         if keepdim:
             return [output_grad]
         else:
-            reshape_grad = expand_as_3d(output_grad, node.inputs[0])
+            reshape_grad = expand_as(output_grad, node.inputs[0])
             return [reshape_grad]
 
 class ExpandAsOp(Op):
@@ -802,7 +802,7 @@ def topological_sort(nodes):
         Nodes in topological order.
     '''
     if not isinstance(nodes, (List, tuple)):
-        nodes = list(nodes)
+        nodes = [nodes]
     visited = set()
     order = [] 
     def dfs(node):
