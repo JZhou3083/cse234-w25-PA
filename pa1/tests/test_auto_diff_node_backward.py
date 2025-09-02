@@ -456,6 +456,19 @@ def test_log():
               [0.333333, 0.25]])]
     )
 
+def test_mean():
+    x = ad.Variable("x")
+    y = ad.mean(x, dim=(0,), keepdim=False)
+    y_grad = ad.Variable("y_grad")
+    x_grad = y.op.gradient(y, y_grad)[0]
+    evaluator = ad.Evaluator(eval_nodes=[x_grad])
+
+    check_evaluator_output(
+        evaluator,
+        input_values={x: torch.tensor([[1.0, 2.0], [3.0, 4.0]]), y_grad: torch.tensor([[1.0, 1.0], [1.0, 1.0]])},
+        expected_outputs=[torch.tensor([[0.5, 0.5], [0.5, 0.5]])]
+    )
+
 if __name__ == "__main__":
     # test_mul()
     # test_div()

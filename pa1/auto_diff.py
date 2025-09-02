@@ -1,4 +1,5 @@
-from typing import Any, Dict, List
+from platform import node
+from typing import Any, Dict, List, Optional
 
 import torch
 
@@ -81,8 +82,9 @@ class Node:
 class Variable(Node):
     """A variable node with given name."""
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, shape: Optional[tuple[int]] = None) -> None:
         super().__init__(inputs=[], op=placeholder, name=name)
+        self.shape = shape 
 
 
 class Op:
@@ -373,7 +375,11 @@ class ExpandAsOp3d(Op):
         assert len(input_values) == 2
         input_tensor, target_tensor = input_values
         print('expand_op',input_tensor.shape, target_tensor.shape)
-        return input_tensor.unsqueeze(1).expand_as(target_tensor)
+        grad = input_tensor
+        # Only unsqueeze if input_tensor.ndim < target_tensor.ndim
+        while grad.ndim < target_tensor.ndim:
+            grad = grad.unsqueeze(-1)
+        return grad.expand_as(target_tensor)
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
         """Given the gradient of the broadcast node, compute partial adjoint to input."""
@@ -740,26 +746,20 @@ class MeanOp(Op):
         dim = node.attrs["dim"]
         keepdim = node.attrs["keepdim"]
 
-        # Compute the number of elements reduced along dim
-        shape = input_node.shape
-        if isinstance(dim, int):
-            dim = (dim,)
-        reduce_size = 1
-        for d in dim:
-            reduce_size *= shape[d]
+        if input_node.shape is None:
+            # symbolic fallback when shape not known
+            output = mean(input_node, dim=dim, keepdim=keepdim)
+            total = sum_op(input_node, dim=dim, keepdim=keepdim)
+            grad = expand_as_3d(output_grad, input_node) / (total / output)
+        else:
+            # compute reduce_size directly
+            reduce_size = 1
+            dims = dim if isinstance(dim, tuple) else (dim,)
+            for d in dims:
+                reduce_size *= input_node.shape[d]
+            grad = expand_as_3d(output_grad, input_node) * (1.0 / reduce_size)
 
-        # Scale the output gradient by 1 / reduce_size
-        scaled_grad = output_grad * (1.0 / reduce_size)
-
-        # Broadcast the scaled gradient to match input shape
-        if not keepdim:
-            for d in sorted(dim):
-                scaled_grad = scaled_grad.unsqueeze(d)
-        broadcasted_grad = scaled_grad.expand(input_node.shape)
-
-        return [broadcasted_grad]
-
-
+        return [grad]
 
 # Create global instances of ops.
 # Your implementation should just use these instances, rather than creating new instances.
