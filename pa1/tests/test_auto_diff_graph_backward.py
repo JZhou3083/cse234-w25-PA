@@ -44,6 +44,33 @@ def test_graph():
         ],
     )
 
+def test_graph2():
+    x1 = ad.Variable("x1")
+    x2 = ad.Variable("x2")
+    x3 = ad.Variable("x3")
+    trans_x2 = ad.transpose(x2, 1, 0)
+    y = ad.matmul(x1, trans_x2) / 10 * x3
+    x1_grad, x2_grad, x3_grad = ad.gradients(y, nodes=[x1, x2, x3])
+    evaluator = ad.Evaluator(eval_nodes=[x1_grad, x2_grad, x3_grad])
+
+    check_evaluator_output(
+        evaluator,
+        input_values={
+            x1: torch.tensor([[-1.0, 2.0, 0.5, 3.4], [0.3, 0.0, -5.8, 3.1]]),
+            x2: torch.tensor([[2.8, 0.7, -0.1, 0.0], [0.6, 6.6, 3.2, 3.1]]),
+            x3: torch.tensor([[2.71, 3.14], [3.87, -4.0]]),
+        },
+        expected_outputs=[
+            torch.tensor(
+                [[0.9472, 2.2621, 0.9777, 0.9734], [0.8436, -2.3691, -1.3187, -1.24]]
+            ),
+            torch.tensor(
+                [[-0.1549, 0.542, -2.1091, 2.1211], [-0.434, 0.628, 2.477, -0.1724]]
+            ),
+            torch.tensor([[-0.145, 2.474], [0.142, -0.877]]),
+        ],
+    )
+
 
 def test_gradient_of_gradient():
     x1 = ad.Variable(name="x1")

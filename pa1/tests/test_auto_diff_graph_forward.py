@@ -217,6 +217,48 @@ def test_sqrt():
         expected_outputs=[torch.tensor([[1.0, 2.0], [3.0, 4.0]])],
     )
 
+def test_graph2():
+    x1 = ad.Variable("x1")
+    x2 = ad.Variable("x2")
+    x3 = ad.Variable("x3")
+
+    x1_mean = ad.mean(x1, dim=(1,), keepdim=True)
+    x1_broad = ad.expand_as(x1_mean, x2)
+    x2_trans = ad.transpose(x2, 1, 0)
+    y = ad.matmul(x1_broad, x2_trans) + x3
+    evaluator = ad.Evaluator(eval_nodes=[y])
+
+    check_evaluator_output(
+        evaluator,
+        input_values={
+            x1: torch.tensor([[-1.0, 2.0, 0.5, 3.4], [0.3, 0.0, -5.8, 3.1]]),
+            x2: torch.tensor([[2.8, 0.7, -0.1, 0.0], [0.6, 6.6, 3.2, 3.1]]),
+            x3: torch.tensor([[2.71, 3.14], [3.87, -4.0]]),
+        },
+        expected_outputs=[torch.tensor([[  6.8750,  19.6775],
+        [  1.8300, -12.1000]])],
+
+    )
+
+def test_sumOP_graph():
+    x1 = ad.Variable("x1")
+    x2 = ad.Variable("x2")
+    x1_sum = ad.sum_op(x1, dim=(1,), keepdim=True)
+    y = ad.add(x1_sum, x2)
+    evaluator = ad.Evaluator(eval_nodes=[y])
+
+    check_evaluator_output(
+        evaluator,
+        input_values={
+            x1: torch.tensor([[-1.0, 2.0, 0.5, 3.4], [0.3, 0.0, -5.8, 3.1]]),
+            x2: torch.tensor([[2.8, 0.7, -0.1, 0.0], [0.6, 6.6, 3.2, 3.1]]),
+        },
+        expected_outputs=[
+            torch.tensor([[ 7.7000,  5.6000,  4.8000,  4.9000],
+        [-1.8000,  4.2000,  0.8000,  0.7000]])
+        ],
+    )
+
 
 if __name__ == "__main__":
     test_identity()
