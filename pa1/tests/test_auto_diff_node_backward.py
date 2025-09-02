@@ -442,6 +442,20 @@ def test_power():
         expected_outputs=[torch.tensor([[2.0, 4.0], [6.0, 8.0]])]
     )
 
+def test_log():
+    x = ad.Variable("x")
+    y = ad.log(x)
+    y_grad = ad.Variable("y_grad")
+    x_grad = y.op.gradient(y, y_grad)[0]
+    evaluator = ad.Evaluator(eval_nodes=[x_grad])   
+
+    check_evaluator_output(
+        evaluator,
+        input_values={x: torch.tensor([[1.0, 2.0], [3.0, 4.0]]), y_grad: torch.tensor([[1.0, 1.0], [1.0, 1.0]])},
+        expected_outputs=[torch.tensor([[1.0, 0.5],
+              [0.333333, 0.25]])]
+    )
+
 if __name__ == "__main__":
     # test_mul()
     # test_div()
