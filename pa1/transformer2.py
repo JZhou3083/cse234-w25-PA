@@ -76,6 +76,52 @@ def single_head_self_attention(X: ad.Node, W_Q: ad.Node, W_K: ad.Node, W_V: ad.N
     output = ad.matmul(context, W_O)
     return output
 
+def encoder_layer(
+    X: ad.Node,
+    W_Q: ad.Node, W_K: ad.Node, W_V: ad.Node, W_O: ad.Node,
+    W1: ad.Node, b1: ad.Node, W2: ad.Node, b2: ad.Node,
+    model_dim: int,
+    seq_length: int,
+    eps: float = 1e-5
+) -> ad.Node:
+    """
+    Single encoder layer **without residuals** (per assignment).
+    Structure:
+      X -> LayerNorm -> Self-Attention -> LayerNorm -> FFN -> output
+
+    Inputs:
+      X: (batch, seq_len, model_dim)
+      W_Q/K/V/O: attention projection matrices (model_dim x model_dim)
+      W1, b1: FFN first layer (model_dim -> ff_hidden)
+      W2, b2: FFN second layer (ff_hidden -> model_dim)
+    Returns:
+      out: (batch, seq_len, model_dim)
+    """
+
+    # Pre-attention normalization
+    norm1 = ad.layernorm(X, normalized_shape=[model_dim], eps=eps)
+
+    # Self-attention (single head)
+    attn_out = single_head_self_attention(
+        norm1,
+        W_Q=W_Q, W_K=W_K, W_V=W_V, W_O=W_O,
+        model_dim=model_dim,
+        seq_length=seq_length,
+        eps=eps
+    )  # (B, S, D)
+
+    # Normalize attention output before FFN
+    norm2 = ad.layernorm(attn_out, normalized_shape=[model_dim], eps=eps)
+
+    # Feed-forward network: Linear -> ReLU -> Linear
+    hidden = Linear(norm2, W1, b1)    # (B, S, ff_hidden)
+    hidden_act = ad.relu(hidden)
+    ffn_out = Linear(hidden_act, W2, b2)  # (B, S, model_dim)
+
+    # NOTE: per assignment, do NOT add residual connections
+    output = ffn_out
+    return output
+
 
 def transformer(X: ad.Node, nodes: List[ad.Node], 
                       model_dim: int, seq_length: int, eps, batch_size, num_classes) -> ad.Node:
