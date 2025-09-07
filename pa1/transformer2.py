@@ -66,7 +66,7 @@ def single_head_self_attention(X: ad.Node, W_Q: ad.Node, W_K: ad.Node, W_V: ad.N
     V = ad.matmul(X, W_V)
 
     # Compute attention scores
-    attn_scores = ad.matmul(Q, ad.transpose(K, dim0=1, dim1=2)) / (model_dim ** 0.5)
+    attn_scores = ad.matmul(Q, ad.transpose(K, dim0=-1, dim1=-2)) / (model_dim ** 0.5)
     attn_weights = ad.softmax(attn_scores,dim = -1)
 
     # Compute context vector
@@ -123,28 +123,60 @@ def encoder_layer(
     return output
 
 
-def transformer(X: ad.Node, nodes: List[ad.Node], 
-                      model_dim: int, seq_length: int, eps, batch_size, num_classes) -> ad.Node:
+def transformer(
+    X: ad.Node,
+    nodes: List[ad.Node],
+    model_dim: int,
+    seq_length: int,
+    eps: float,
+    batch_size: int,
+    num_classes: int
+) -> ad.Node:
     """Construct the computational graph for a single transformer layer with sequence classification.
 
     Parameters
     ----------
     X: ad.Node
-        A node in shape (batch_size, seq_length, model_dim), denoting the input data.
+        Input tensor, shape (batch_size, seq_length, model_dim)
     nodes: List[ad.Node]
-        Nodes you would need to initialize the transformer.
+        Parameters needed for the transformer layer. Expected order:
+          [W_Q, W_K, W_V, W_O, W1, b1, W2, b2, W_cls, b_cls]
     model_dim: int
-        Dimension of the model (hidden size).
+        Model hidden dimension
     seq_length: int
-        Length of the input sequence.
+        Input sequence length
+    eps: float
+        Epsilon for layer normalization
+    batch_size: int
+        Batch size (not used directly, but for clarity)
+    num_classes: int
+        Number of output classes
 
     Returns
     -------
     output: ad.Node
-        The output of the transformer layer, averaged over the sequence length for classification, in shape (batch_size, num_classes).
+        Classification logits, shape (batch_size, num_classes)
     """
+    # Unpack nodes
+    W_Q, W_K, W_V, W_O, W1, b1, W2, b2, W_cls, b_cls = nodes
 
-    """TODO: Your code here"""
+    # Encoder layer (simplified, no residuals — matches your assignment spec)
+    hidden = encoder_layer(
+        X,
+        W_Q=W_Q, W_K=W_K, W_V=W_V, W_O=W_O,
+        W1=W1, b1=b1, W2=W2, b2=b2,
+        model_dim=model_dim,
+        seq_length=seq_length,
+        eps=eps
+    )  # (B, S, D)
+
+    # Sequence pooling: mean over sequence length
+    pooled = ad.mean(hidden, dim=(1,))  # (B, D)
+
+    # Classification head: Linear → (B, num_classes)
+    logits = Linear(pooled, W_cls, b_cls)
+
+    return logits
 
 
 def softmax_loss(Z: ad.Node, y_one_hot: ad.Node, batch_size: int) -> ad.Node:
