@@ -222,7 +222,7 @@ def sgd_epoch(
     model_weights: List[torch.Tensor],
     batch_size: int,
     lr: float,
-) -> List[torch.Tensor]:
+) -> Tuple[List[torch.Tensor], float]:
     """Run an epoch of SGD for the logistic regression model
     on training data with regard to the given mini-batch size
     and learning rate.
@@ -279,16 +279,17 @@ def sgd_epoch(
         
         # Compute forward and backward passes
         # TODO: Your code here
-
+        logits, loss_val, grads = f_run_model(X_batch, y_batch, model_weights)
         
         # Update weights and biases
         # TODO: Your code here
         # Hint: You can update the tensor using something like below:
         # W_Q -= lr * grad_W_Q.sum(dim=0)
-
+        for w, g in zip(model_weights, grads):
+                w -= lr * g
         # Accumulate the loss
         # TODO: Your code here
-
+        total_loss += loss_val.item() * (end_idx - start_idx)
 
     # Compute the average loss
     
@@ -307,7 +308,15 @@ def train_model():
     Your implementation should NOT make changes to this function.
     """
     # Set up model params
-
+    with torch.no_grad():
+        W_Q = ad.Variable(name="W_Q")
+        W_K = ad.Variable(name="W_K")
+        W_V = ad.Variable(name="W_V")
+        W_O = ad.Variable(name="W_O")
+        W_1 = ad.Variable(name="W_1")
+        W_2 = ad.Variable(name="W_2")
+        b_1 = ad.Variable(name="b_1")
+        b_2 = ad.Variable(name="b_2")
     # TODO: Tune your hyperparameters here
     # Hyperparameters
     input_dim = 28  # Each row of the MNIST image
@@ -322,8 +331,6 @@ def train_model():
     lr = 0.02
 
     # TODO: Define the forward graph.
-
-    y_predict: ad.Node = ... # TODO: The output of the forward pass
     y_groundtruth = ad.Variable(name="y")
     loss: ad.Node = softmax_loss(y_predict, y_groundtruth, batch_size)
     
