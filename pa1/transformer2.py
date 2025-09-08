@@ -73,7 +73,7 @@ def single_head_self_attention(X: ad.Node, W_Q: ad.Node, W_K: ad.Node, W_V: ad.N
     context = ad.matmul(attn_weights, V)
 
     # Compute output projection
-    output = ad.matmul(context, W_O)
+    output = ad.matmul(context, ad.transpose(W_O, 0, 1))
     return output
 
 def encoder_layer(
@@ -122,7 +122,6 @@ def encoder_layer(
     output = ffn_out
     return output
 
-
 def transformer(
     X: ad.Node,
     nodes: List[ad.Node],
@@ -157,11 +156,11 @@ def transformer(
     output: ad.Node
         Classification logits, shape (batch_size, num_classes)
     """
-    # Unpack nodes
+    # Unpack parameters
     W_Q, W_K, W_V, W_O, W1, b1, W2, b2, W_cls, b_cls = nodes
 
-    # Encoder layer (simplified, no residuals — matches your assignment spec)
-    hidden = encoder_layer(
+    # Encoder layer
+    encoder_out = encoder_layer(
         X,
         W_Q=W_Q, W_K=W_K, W_V=W_V, W_O=W_O,
         W1=W1, b1=b1, W2=W2, b2=b2,
@@ -170,14 +169,13 @@ def transformer(
         eps=eps
     )  # (B, S, D)
 
-    # Sequence pooling: mean over sequence length
-    pooled = ad.mean(hidden, dim=(1,))  # (B, D)
+    # Pooling: take the representation of the first token (could also use mean pooling)
+    pooled = ad.mean(encoder_out, dim=(1,))  # (B, D)
 
-    # Classification head: Linear → (B, num_classes)
-    logits = Linear(pooled, W_cls, b_cls)
+    # Classification head
+    logits = Linear(pooled, W_cls, b_cls)  # (B, num_classes)
 
     return logits
-
 
 def softmax_loss(Z: ad.Node, y_one_hot: ad.Node, batch_size: int) -> ad.Node:
     """Construct the computational graph of average softmax loss over
@@ -211,7 +209,10 @@ def softmax_loss(Z: ad.Node, y_one_hot: ad.Node, batch_size: int) -> ad.Node:
     Try to think about why our softmax loss may need the batch size.
     """
     """TODO: Your code here"""
+    probs = ad.softmax(Z)
+    loss = ad.mul_by_const(ad.sum_op(y_one_hot * ad.log(probs), dim= (0, 1)), -1) / batch_size
 
+    return loss
 
 
 def sgd_epoch(
