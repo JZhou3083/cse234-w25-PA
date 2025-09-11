@@ -54,7 +54,7 @@ def single_head_self_attention(X: ad.Node, W_Q: ad.Node, W_K: ad.Node, W_V: ad.N
     seq_length: int
         Length of the input sequence.
     eps: float
-        A small value to avoid division by zero in layer normalization. Default to 1e-5. 
+        A small value to avoid division by zero in layer normalization. Default to 1e-5.
     Returns
     -------
     output: ad.Node
@@ -276,11 +276,11 @@ def sgd_epoch(
         end_idx = min(start_idx + batch_size, num_examples)
         X_batch = X[start_idx:end_idx, :max_len]
         y_batch = y[start_idx:end_idx]
-        
+
         # Compute forward and backward passes
         # TODO: Your code here
         logits, loss_val, grads = f_run_model(X_batch, y_batch, model_weights)
-        
+
         # Update weights and biases
         # TODO: Your code here
         # Hint: You can update the tensor using something like below:
@@ -292,7 +292,7 @@ def sgd_epoch(
         total_loss += loss_val.item() * (end_idx - start_idx)
 
     # Compute the average loss
-    
+
     average_loss = total_loss / num_examples
     print('Avg_loss:', average_loss)
 
@@ -308,22 +308,24 @@ def train_model():
     Your implementation should NOT make changes to this function.
     """
     # Set up model params
-    with torch.no_grad():
-        W_Q = ad.Variable(name="W_Q")
-        W_K = ad.Variable(name="W_K")
-        W_V = ad.Variable(name="W_V")
-        W_O = ad.Variable(name="W_O")
-        W_1 = ad.Variable(name="W_1")
-        W_2 = ad.Variable(name="W_2")
-        b_1 = ad.Variable(name="b_1")
-        b_2 = ad.Variable(name="b_2")
+    W_Q = ad.Variable(name="W_Q")
+    W_K = ad.Variable(name="W_K")
+    W_V = ad.Variable(name="W_V")
+    W_O = ad.Variable(name="W_O")
+    W_1 = ad.Variable(name="W_1")
+    W_2 = ad.Variable(name="W_2")
+    b_1 = ad.Variable(name="b_1")
+    b_2 = ad.Variable(name="b_2")
+    W_cls = ad.Variable(name = 'W_cls')
+    b_cls = ad.Variable(name= 'b_cls')
+
     # TODO: Tune your hyperparameters here
     # Hyperparameters
     input_dim = 28  # Each row of the MNIST image
     seq_length = max_len  # Number of rows in the MNIST image
     num_classes = 10 #
     model_dim = 128 #
-    eps = 1e-5 
+    eps = 1e-5
 
     # - Set up the training settings.
     num_epochs = 20
@@ -331,14 +333,16 @@ def train_model():
     lr = 0.02
 
     # TODO: Define the forward graph.
+    X = ad.Variable(name = 'X')
+    y_predict: ad.Node = transformer(X=X, nodes=[W_Q,W_K,W_V,W_O,W_1,b_1, W_2,b_2, W_cls, b_cls],
+                                    model_dim=model_dim, seq_length=seq_length,
+                                    eps = eps, batch_size= batch_size, num_classes= num_classes)
     y_groundtruth = ad.Variable(name="y")
     loss: ad.Node = softmax_loss(y_predict, y_groundtruth, batch_size)
-    
-    # TODO: Construct the backward graph.
-    
 
+    # TODO: Construct the backward graph.
     # TODO: Create the evaluator.
-    grads: List[ad.Node] = ... # TODO: Define the gradient nodes here
+    grads: List[ad.Node] = ad.gradients(y_predict, nodes=[W_Q,W_K,W_V,W_O,W_1,b_1, W_2,b_2, W_cls, b_cls]) # TODO: Define the gradient nodes here
     evaluator = ad.Evaluator([y_predict, loss, *grads])
     test_evaluator = ad.Evaluator([y_predict])
 
@@ -368,7 +372,6 @@ def train_model():
     # Fit and transform y_train, and transform y_test
     y_train = encoder.fit_transform(y_train.reshape(-1, 1))
 
-    num_classes = 10
 
     # Initialize model weights.
     np.random.seed(0)
@@ -389,7 +392,15 @@ def train_model():
         result = evaluator.run(
             input_values={
                 # TODO: Fill in the mapping from variable to tensor
-
+            X: X_train,
+            W_Q: W_Q_val,
+            W_K: W_K_val,
+            W_V: W_V_val,
+            W_O: W_O_val,
+            W_1: W_1_val,
+            W_2: W_2_val,
+            b_1: b_1_val,
+            w_
 
             }
         )
