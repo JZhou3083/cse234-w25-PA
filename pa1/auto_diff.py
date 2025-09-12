@@ -374,7 +374,6 @@ class ExpandAsOp3d(Op):
         """Return the broadcasted tensor."""
         assert len(input_values) == 2
         input_tensor, target_tensor = input_values
-        print('expand_op',input_tensor.shape, target_tensor.shape)
         grad = input_tensor
         # Only unsqueeze if input_tensor.ndim < target_tensor.ndim
         while grad.ndim < target_tensor.ndim:
@@ -627,32 +626,29 @@ class LayerNormOp(Op):
         return (input_node-mean)/torch.sqrt(var+eps)
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
-        input_node = node.inputs[0]
+        X = node.inputs[0]  # Node
         normalized_shape = node.attrs["normalized_shape"]
         eps = node.attrs["eps"]
 
         dim = tuple(range(-len(normalized_shape), 0))
 
         # mean and variance
-        mean_node = mean(input_node, dim=dim, keepdim=True)
-        x_minus_mean = input_node - mean_node
-        squared_diff = power(x_minus_mean, 2)
-        var_node = mean(squared_diff, dim=dim, keepdim=True)
-        std_node = sqrt(var_node + eps)
+        mean_X = mean(X, dim=dim, keepdim=True)
+        x_minus_mean = X - mean_X
+        var_X = mean(power(x_minus_mean, 2), dim=dim, keepdim=True)
+        std_X = sqrt(var_X + eps)
 
         # normalized input
-        x_hat = x_minus_mean / std_node
+        X_hat = x_minus_mean / std_X
 
-        # gradient terms
+        # gradient wrt input
         g = output_grad
         g_mean = mean(g, dim=dim, keepdim=True)
-        gxhat = g * x_hat
-        gxhat_mean = mean(gxhat, dim=dim, keepdim=True)
+        gxhat_mean = mean(g * X_hat, dim=dim, keepdim=True)
 
-        # final gradient
-        grad_input = (g - g_mean - x_hat * gxhat_mean) / std_node
+        grad_X = (g - g_mean - X_hat * gxhat_mean) / std_X
 
-        return [grad_input]
+        return [grad_X]
 
 
 
@@ -746,20 +742,10 @@ class MeanOp(Op):
         dim = node.attrs["dim"]
         keepdim = node.attrs["keepdim"]
 
-        if input_node.shape is None:
-            # symbolic fallback when shape not known
-            output = mean(input_node, dim=dim, keepdim=keepdim)
-            total = sum_op(input_node, dim=dim, keepdim=keepdim)
-            grad = expand_as_3d(output_grad, input_node) / (total / output)
-        else:
-            # compute reduce_size directly
-            reduce_size = 1
-            dims = dim if isinstance(dim, tuple) else (dim,)
-            for d in dims:
-                reduce_size *= input_node.shape[d]
-            grad = expand_as_3d(output_grad, input_node) * (1.0 / reduce_size)
-
+        # Symbolic gradient using mean node
+        grad = expand_as_3d(mean(output_grad, dim=dim, keepdim=keepdim), input_node)
         return [grad]
+
 
 # Create global instances of ops.
 # Your implementation should just use these instances, rather than creating new instances.
