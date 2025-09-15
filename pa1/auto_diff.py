@@ -35,6 +35,14 @@ class Node:
         self.op = op
         self.attrs = attrs
         self.name = name
+        self.shape = self._infer_shape()
+
+    def _infer_shape(self):
+        if self.op ==placeholder:
+            return None # Shape wil e provided later
+        if hasattr(self.op, 'infer_shape'):
+            return self.op.infer_shape(self)
+        return self.inputs[0].shape if self.inputs else None
 
     def __add__(self, other):
         if isinstance(other, Node):
@@ -779,8 +787,8 @@ def topological_sort(nodes):
 
     Parameters
     ----------
-    nodes: List[Node] or Node 
-        Node(s) to sort 
+    nodes: List[Node] or Node
+        Node(s) to sort
 
     Returns
     ----------
@@ -790,10 +798,10 @@ def topological_sort(nodes):
     if not isinstance(nodes, (List, tuple)):
         nodes = [nodes]
     visited = set()
-    order = [] 
+    order = []
     def dfs(node):
         if node in visited:
-            return 
+            return
         visited.add(node)
         for input in getattr(node, 'inputs', []):
             dfs(input)
@@ -801,7 +809,7 @@ def topological_sort(nodes):
 
     for node in nodes:
         dfs(node)
-    return order 
+    return order
 
 class Evaluator:
     """The node evaluator that computes the values of nodes in a computational graph."""
@@ -856,7 +864,7 @@ class Evaluator:
         # Return only the values for requested eval_nodes
         return [computed_values[node] for node in self.eval_nodes]
 
-def gradients(output_node: "Node", nodes: List["Node"]) -> List["Node"]:
+def gradients(output_node: "Node", nodes: List["Node"], value_cache: Dict[Node, torch.Tensor] = None) -> List["Node"]:
     """Construct the backward computational graph.
 
     Parameters
@@ -887,6 +895,7 @@ def gradients(output_node: "Node", nodes: List["Node"]) -> List["Node"]:
 
         if getattr(node, "inputs", None):
             # Compute gradients for each input using the op's gradient rule
+             # Use stored values if available
             input_grads = node.op.gradient(node, grad_out)
             for inp, inp_grad in zip(node.inputs, input_grads):
                 if inp in node_to_grad:
