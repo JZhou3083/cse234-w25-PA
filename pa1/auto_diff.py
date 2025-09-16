@@ -35,14 +35,6 @@ class Node:
         self.op = op
         self.attrs = attrs
         self.name = name
-        self.shape = self._infer_shape()
-
-    def _infer_shape(self):
-        if self.op ==placeholder:
-            return None # Shape wil e provided later
-        if hasattr(self.op, 'infer_shape'):
-            return self.op.infer_shape(self)
-        return self.inputs[0].shape if self.inputs else None
 
     def __add__(self, other):
         if isinstance(other, Node):
@@ -90,15 +82,14 @@ class Node:
 class Variable(Node):
     """A variable node with given name."""
 
-    def __init__(self, name: str, shape: Optional[tuple[int]] = None) -> None:
+    def __init__(self, name: str) -> None:
         super().__init__(inputs=[], op=placeholder, name=name)
-        self.shape = shape 
 
 
 class Op:
     """The class of operations performed on nodes."""
 
-    def __call__(self, *args,**kwargs) -> Node:
+    def __call__(self, *kwargs) -> Node:
         """Create a new node with this current op.
 
         Returns
@@ -145,7 +136,6 @@ class Op:
         """
         raise NotImplementedError
 
-
 class PlaceholderOp(Op):
     """The placeholder op to denote computational graph input nodes."""
 
@@ -159,6 +149,7 @@ class PlaceholderOp(Op):
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
         raise RuntimeError("Placeholder nodes have no inputs.")
+
 
 
 class AddOp(Op):
@@ -472,7 +463,6 @@ class DivOp(Op):
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
         """Given gradient of division node, return partial adjoint to each input."""
-        """TODO: your code here"""
         a = node.inputs[0]
         b = node.inputs[1]
 
@@ -731,28 +721,27 @@ class MeanOp(Op):
     """
 
     def __call__(self, node_A: Node, dim: tuple, keepdim: bool = False) -> Node:
-        return Node(
-            inputs=[node_A],
-            op=self,
-            attrs={"dim": dim, "keepdim": keepdim},
-            name=f"Mean({node_A.name})",
-        )
+        return Node(inputs=[node_A], op=self, attrs={"dim": dim, "keepdim": keepdim}, name=f"Mean({node_A.name})")
 
     def compute(self, node: Node, input_values: List[torch.Tensor]) -> torch.Tensor:
         assert len(input_values) == 1
-        """TODO: your code here"""
-        dim = node.attrs['dim']
-        keepdim = node.attrs['keepdim']
-        return torch.mean(input_values[0], dim=dim,keepdim=keepdim)
+        return input_values[0].mean(dim=node.attrs["dim"], keepdim=node.attrs["keepdim"])
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
-        input_node = node.inputs[0]
+        # grad_input = expand_as(output_grad / N, input)
         dim = node.attrs["dim"]
         keepdim = node.attrs["keepdim"]
+        x = node.inputs[0]
 
-        # Symbolic gradient using mean node
-        grad = expand_as_3d(mean(output_grad, dim=dim, keepdim=keepdim), input_node)
-        return [grad]
+        # N = number of elements summed over -> we can build it as sum(ones_like(x), dim, keepdim)
+        ones = ones_like(x)
+        count = sum_op(ones, dim=dim, keepdim=keepdim)
+
+        # divide output_grad by count (element-wise over reduced dims)
+        divided = div(output_grad, count)
+        # expand back to input shape
+        expanded = expand_as(divided, x)
+        return [expanded]
 
 
 # Create global instances of ops.
