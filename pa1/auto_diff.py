@@ -743,6 +743,18 @@ class MeanOp(Op):
         expanded = expand_as(divided, x)
         return [expanded]
 
+class ExpOp(Op):
+    """Op to compute exponential of node.
+    """
+
+    def __call__(self, node_A: Node):
+        return Node(inputs = [node_A], op = self, name = f"Exp{node_A.name}")
+
+    def __compute__(self, node: Node, input_values: List[torch.Tensor]) -> torch.Tensor:
+        assert len(input_values) == 1
+        return torch.exp(input_values[0])
+    def __gradient__(self, node:Node, output_grad: Node) -> torch.tensor:
+        return [output_grad]
 
 # Create global instances of ops.
 # Your implementation should just use these instances, rather than creating new instances.
@@ -750,6 +762,7 @@ placeholder = PlaceholderOp()
 add = AddOp()
 mul = MulOp()
 div = DivOp()
+exp = ExpOp()
 add_by_const = AddByConstOp()
 mul_by_const = MulByConstOp()
 div_by_const = DivByConstOp()
