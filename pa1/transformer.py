@@ -14,6 +14,67 @@ from torchvision import datasets, transforms
 
 max_len = 28
 
+def linear(X:ad.Node, W: ad.Node, b :ad.Node = None) -> ad.Node:
+    """_summary_
+
+    Args:
+        X (ad.Node): _description_
+        W (ad.Node): _description_
+        b (ad.Node): _description_
+
+    Returns:
+        ad.Node: _description_
+    """
+    return ad.matmul(X,W)+ b if b else ad.matmul(X,W)
+
+def single_head_atten(X: ad.Node, W_Q: ad.Node, W_K: ad.Node, W_V: ad.Node, model_dim: int) -> ad.Node:
+    """A single-Head Attention Layer
+
+    Args:
+        X (ad.Node): Input Node
+        W_Q (ad.Node): Weight Matrix of query
+        W_K (ad.Node): weight Matrix of K
+        W_V (ad.Node): Weight Matrix of V
+        model_dim (int): Embedding length
+
+    Returns:
+        ad.Node: attentions
+    """
+    # Project inputs
+    Q = linear(X, W_Q)
+    K = linear(X, W_K)
+    V = linear(X, W_V)
+
+    # Attention weights (scaled dot-product)
+    attn_scores = linear(Q, ad.transpose(K, dim0= -1, dim1= -2))/np.sqrt(model_dim)
+    attn_weights = ad.softmax(attn_scores, dim = -1)
+
+    atten = ad.matmul(attn_weights, V)
+
+    return atten
+
+def encoder(X: ad.Node, nodes :List[ad.Node], model_dim: int ) -> ad.Node:
+    """A encoder layer combining self-attention and feed-forward network
+
+    Args:
+        X (ad.Node): input node
+        nodes (List[ad.Node]): model_weights
+        model_dim (int): embedding length
+
+    Returns:
+        ad.Node: _description_
+    """
+    W_Q, W_K, W_V, W_O, W1, W2, b1, b2 = nodes
+    attn_scores = single_head_atten(X, W_Q, W_K, W_V, model_dim)
+
+    # Output projection
+    Z = ad.matmul(attn_scores, W_O)
+
+    # Fedforward layer
+    H = ad.relu(ad.matmul(Z, W1)+ b1)
+    logits =ad.matmul(H, W2)+b2
+    return logits
+
 def transformer(X: ad.Node, nodes: List[ad.Node],
                       model_dim: int, seq_length: int, eps, batch_size, num_classes) -> ad.Node:
     """Construct the computational graph for a single transformer layer with sequence classification.
@@ -36,25 +97,7 @@ def transformer(X: ad.Node, nodes: List[ad.Node],
     """
 
     W_Q, W_K, W_V, W_O, W1, W2, b1, b2 = nodes
-
-    # Project inputs
-    Q = ad.matmul(X, W_Q)
-    K = ad.matmul(X, W_K)
-    V = ad.matmul(X, W_V)
-
-    # Attention weights (scaled dot-product)
-    attn_scores = ad.matmul(Q, ad.transpose(K, dim0= -1, dim1= -2))/np.sqrt(model_dim)
-    attn_weights = ad.softmax(attn_scores, dim = -1)
-
-    # Apply attention to values
-    Z = ad.matmul(attn_weights, V)
-
-    # Output projection
-    Z = ad.matmul(Z, W_O)
-
-    # Fedforward layer
-    H = ad.relu(ad.matmul(Z, W1)+ b1)
-    logits =ad.matmul(H, W2)+b2
+    logits = encoder(X, [W_Q, W_K, W_V, W_O, W1, W2, b1, b2],model_dim)
 
     # Average over sequence length for classification
     output = ad.mean(logits, dim =1) # shape (batch_size, num_classes)
@@ -96,12 +139,9 @@ def softmax_loss(Z: ad.Node, y_one_hot: ad.Node, batch_size: int) -> ad.Node:
     softmax = exp_logits/ ad.sum_op(exp_logits, dim=1, keepdim= True)
 
     log_probs = ad.log(softmax +1e-9) # avoid log(0)
-    loss = -ad.sum(y_one_hot*log_probs)/ batch_size
+    loss = ad.mul_by_const(ad.sum_op(y_one_hot*log_probs,dim=1)/ batch_size, -1)
 
     return loss
-
-
-
 
 def sgd_epoch(
     f_run_model: Callable,
@@ -185,7 +225,7 @@ def sgd_epoch(
     # You should return the list of parameters and the loss
     return model_weights, average_loss
 
-def train_model():
+# def train_model():
     """Train a logistic regression model with handwritten digit dataset.
 
     Note
@@ -352,6 +392,138 @@ def train_model():
     # Return the final test accuracy.
     predict_label = f_eval_model(X_test, model_weights)
     return np.mean(predict_label == y_test.numpy())
+
+def train_model():
+   """Train a transformer-based classifier on MNIST."""
+   # Set up model params
+   input_dim = 28           # Each row of the MNIST image
+   seq_length = max_len     # Number of rows in the MNIST image
+   num_classes = 10
+   model_dim = 128
+   eps = 1e-5
+   # Training settings
+   num_epochs = 20
+   batch_size = 50
+   lr = 0.02
+   # Define variables for graph
+   X_var = ad.Variable(name="X")  # (batch_size, seq_length, input_dim)
+   y_groundtruth = ad.Variable(name="y")
+   W_Q = ad.Variable(name="W_Q")
+   W_K = ad.Variable(name="W_K")
+   W_V = ad.Variable(name="W_V")
+   W_O = ad.Variable(name="W_O")
+   W_1 = ad.Variable(name="W_1")
+   W_2 = ad.Variable(name="W_2")
+   b_1 = ad.Variable(name="b_1")
+   b_2 = ad.Variable(name="b_2")
+   nodes = [W_Q, W_K, W_V, W_O, W_1, W_2, b_1, b_2]
+   # Forward graph
+   y_predict: ad.Node = transformer(
+       X_var, nodes, model_dim, seq_length, eps, batch_size, num_classes
+   )
+   loss: ad.Node = softmax_loss(y_predict, y_groundtruth, batch_size)
+   # Backward graph
+   grads: List[ad.Node] = ad.gradients(loss, nodes)
+   # Evaluators
+   evaluator = ad.Evaluator([y_predict, loss, *grads])
+   test_evaluator = ad.Evaluator([y_predict])
+   # --- Load the dataset ---
+   transform = transforms.Compose([
+       transforms.ToTensor(),
+       transforms.Normalize((0.5,), (0.5,))
+   ])
+   train_dataset = datasets.MNIST(
+       root="./data", train=True, transform=transform, download=True
+   )
+   test_dataset = datasets.MNIST(
+       root="./data", train=False, transform=transform, download=True
+   )
+   X_train = train_dataset.data.numpy().reshape(-1, 28, 28) / 255.0
+   y_train = train_dataset.targets.numpy()
+   X_test = test_dataset.data.numpy().reshape(-1, 28, 28) / 255.0
+   y_test = test_dataset.targets.numpy()
+   encoder = OneHotEncoder(sparse_output=False)
+   y_train = encoder.fit_transform(y_train.reshape(-1, 1))
+   # --- Initialize model weights ---
+   np.random.seed(0)
+   stdv = 1.0 / np.sqrt(num_classes)
+   W_Q_val = np.random.uniform(-stdv, stdv, (input_dim, model_dim))
+   W_K_val = np.random.uniform(-stdv, stdv, (input_dim, model_dim))
+   W_V_val = np.random.uniform(-stdv, stdv, (input_dim, model_dim))
+   W_O_val = np.random.uniform(-stdv, stdv, (model_dim, model_dim))
+   W_1_val = np.random.uniform(-stdv, stdv, (model_dim, model_dim))
+   W_2_val = np.random.uniform(-stdv, stdv, (model_dim, num_classes))
+   b_1_val = np.random.uniform(-stdv, stdv, (model_dim,))
+   b_2_val = np.random.uniform(-stdv, stdv, (num_classes,))
+   model_weights: List[torch.Tensor] = [
+       torch.tensor(W_Q_val, dtype=torch.float64),
+       torch.tensor(W_K_val, dtype=torch.float64),
+       torch.tensor(W_V_val, dtype=torch.float64),
+       torch.tensor(W_O_val, dtype=torch.float64),
+       torch.tensor(W_1_val, dtype=torch.float64),
+       torch.tensor(W_2_val, dtype=torch.float64),
+       torch.tensor(b_1_val, dtype=torch.float64),
+       torch.tensor(b_2_val, dtype=torch.float64),
+   ]
+   # --- Runner functions ---
+   def f_run_model(X_batch, y_batch, model_weights):
+       """Forward + backward pass."""
+       result = evaluator.run(
+           input_values={
+               X_var: X_batch.numpy(),
+               y_groundtruth: y_batch.numpy(),
+               W_Q: model_weights[0].detach().numpy(),
+               W_K: model_weights[1].detach().numpy(),
+               W_V: model_weights[2].detach().numpy(),
+               W_O: model_weights[3].detach().numpy(),
+               W_1: model_weights[4].detach().numpy(),
+               W_2: model_weights[5].detach().numpy(),
+               b_1: model_weights[6].detach().numpy(),
+               b_2: model_weights[7].detach().numpy(),
+           }
+       )
+       return result
+   def f_eval_model(X_val, model_weights: List[torch.Tensor]):
+       """Forward pass only for predictions."""
+       num_examples = X_val.shape[0]
+       num_batches = (num_examples + batch_size - 1) // batch_size
+       all_logits = []
+       for i in range(num_batches):
+           start_idx = i * batch_size
+           end_idx = min(start_idx + batch_size, num_examples)
+           if end_idx - start_idx < batch_size:
+               continue
+           X_batch = X_val[start_idx:end_idx, :max_len]
+           logits = test_evaluator.run({
+               X_var: X_batch.numpy(),
+               W_Q: model_weights[0].detach().numpy(),
+               W_K: model_weights[1].detach().numpy(),
+               W_V: model_weights[2].detach().numpy(),
+               W_O: model_weights[3].detach().numpy(),
+               W_1: model_weights[4].detach().numpy(),
+               W_2: model_weights[5].detach().numpy(),
+               b_1: model_weights[6].detach().numpy(),
+               b_2: model_weights[7].detach().numpy(),
+           })
+           all_logits.append(logits[0])
+       concatenated_logits = np.concatenate(all_logits, axis=0)
+       predictions = np.argmax(concatenated_logits, axis=1)
+       return predictions
+   # --- Training loop ---
+   X_train, X_test = torch.tensor(X_train), torch.tensor(X_test)
+   y_train, y_test = torch.DoubleTensor(y_train), torch.DoubleTensor(y_test)
+   for epoch in range(num_epochs):
+       X_train, y_train = shuffle(X_train, y_train)
+       model_weights, loss_val = sgd_epoch(
+           f_run_model, X_train, y_train, model_weights, batch_size, lr
+       )
+       predict_label = f_eval_model(X_test, model_weights)
+       print(
+           f"Epoch {epoch}: test accuracy = {np.mean(predict_label == y_test.numpy())}, "
+           f"loss = {loss_val}"
+       )
+   predict_label = f_eval_model(X_test, model_weights)
+   return np.mean(predict_label == y_test.numpy())
 
 if __name__ == "__main__":
     print(f"Final test accuracy: {train_model()}")
