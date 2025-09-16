@@ -134,7 +134,7 @@ class Op:
         input_grads: List[Node]
             The list of partial gradients with regard to each input of the node.
         """
-        raise NotImplementedError
+        raise NotImplementedError(f"Gradient not implemented for {type(node.op)}")
 
 class PlaceholderOp(Op):
     """The placeholder op to denote computational graph input nodes."""
@@ -866,44 +866,40 @@ class Evaluator:
         # Return only the values for requested eval_nodes
         return [computed_values[node] for node in self.eval_nodes]
 
-def gradients(output_node: "Node", nodes: List["Node"], value_cache: Dict[Node, torch.Tensor] = None) -> List["Node"]:
-    """Construct the backward computational graph.
-
-    Parameters
-    ----------
-    output_node : Node
-        The output node to take gradient of, whose gradient is 1.
-    nodes : List[Node]
-        The list of nodes to take gradient with respect to.
-
-    Returns
-    -------
-    grad_nodes : List[Node]
-        Gradient nodes, one per input node in `nodes`.
+def gradients(output_node: Node, nodes: List[Node]) -> List[Node]:
     """
-    # 1. Initialize mapping from node -> gradient expression
-    node_to_grad: Dict["Node", "Node"] = {}
-    node_to_grad[output_node] = ones_like(output_node)
+    Construct symbolic backward graph returning gradient Node for each node in nodes.
+    """
+    # Topologically sort all nodes reachable from output_node
+    topo = topological_sort(output_node)
+    # reverse traverse
+    grad_map: Dict[Node, Node] = {}
+    # d(output)/d(output) = ones_like(output)
+    grad_map[output_node] = ones_like(output_node)
 
-    # 2. Get topological order of all nodes affecting the output
-    topo_order = topological_sort(output_node)
+    # Walk nodes in reverse topological order
+    i = 0
+    for n in reversed(topo):
+        i +=1
+        print(i)
+        if n not in grad_map:
+            # no gradient flows to this node
+            continue
+        out_grad = grad_map[n]
+        # compute partial gradients wrt inputs using op.gradient
+        input_grads = n.op.gradient(n, out_grad)
+        # accumulate into grad_map
+        for inp, g in zip(n.inputs, input_grads):
+            if inp in grad_map:
+                grad_map[inp] = add(grad_map[inp], g)
+            else:
+                grad_map[inp] = g
 
-    # 3. Traverse in reverse topological order
-    for node in reversed(topo_order):
-        if node not in node_to_grad:
-            continue  # No gradient signal flows here
-
-        grad_out = node_to_grad[node]
-
-        if getattr(node, "inputs", None):
-            # Compute gradients for each input using the op's gradient rule
-             # Use stored values if available
-            input_grads = node.op.gradient(node, grad_out)
-            for inp, inp_grad in zip(node.inputs, input_grads):
-                if inp in node_to_grad:
-                    node_to_grad[inp] = node_to_grad[inp] + inp_grad
-                else:
-                    node_to_grad[inp] = inp_grad
-
-    # 4. Return the gradients for the requested nodes (0 if no grad)
-    return [node_to_grad.get(n, zeros_like(n)) for n in nodes]
+    # Return gradient nodes for requested nodes (use zeros_like if absent)
+    result = []
+    for nd in nodes:
+        if nd in grad_map:
+            result.append(grad_map[nd])
+        else:
+            result.append(zeros_like(nd))
+    return result
