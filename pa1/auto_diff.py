@@ -878,14 +878,14 @@ def gradients(output_node: Node, nodes: List[Node]) -> List[Node]:
     grad_map[output_node] = ones_like(output_node)
 
     # Walk nodes in reverse topological order
-    i = 0
     for n in reversed(topo):
-        i +=1
-        print(i)
         if n not in grad_map:
             # no gradient flows to this node
             continue
         out_grad = grad_map[n]
+        # These nodes are weights, doesn't propagate gradients
+        if n in nodes:
+            continue
         # compute partial gradients wrt inputs using op.gradient
         input_grads = n.op.gradient(n, out_grad)
         # accumulate into grad_map
