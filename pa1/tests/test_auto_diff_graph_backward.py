@@ -22,7 +22,7 @@ def test_graph():
     x2 = ad.Variable("x2")
     x3 = ad.Variable("x3")
     trans_x2 = ad.transpose(x2, 1, 0)
-    y = ad.matmul(x1, trans_x2) / 10 * x3
+    y = ad.mul(ad.div_by_const(ad.matmul(x1, trans_x2) , 10) , x3)
     x1_grad, x2_grad, x3_grad = ad.gradients(y, nodes=[x1, x2, x3])
     evaluator = ad.Evaluator(eval_nodes=[x1_grad, x2_grad, x3_grad])
 

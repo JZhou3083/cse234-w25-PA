@@ -249,6 +249,7 @@ def train_model():
    b_1 = ad.Variable(name="b_1")
    b_2 = ad.Variable(name="b_2")
    nodes = [W_Q, W_K, W_V, W_O, W_1, W_2, b_1, b_2]
+
    # Forward graph
    y_predict: ad.Node = transformer(
        X_var, nodes, model_dim, seq_length, eps, batch_size, num_classes
