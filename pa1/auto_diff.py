@@ -318,7 +318,10 @@ class SumOp(Op):
 
     def compute(self, node: Node, input_values: List[torch.Tensor]) -> torch.Tensor:
         assert len(input_values) == 1
-        return input_values[0].sum(dim=node.dim, keepdim=node.keepdim)
+        # dim = node.dim
+        # if not isinstance(dim, tuple):
+        #     dim = (dim)
+        return input_values[0].sum(dim=node.attrs['dim'], keepdim=node.attrs['keepdim'])
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
         dim = node.attrs['dim']
@@ -885,6 +888,9 @@ def gradients(output_node: Node, nodes: List[Node]) -> List[Node]:
         out_grad = grad_map[n]
         # These nodes are weights, doesn't propagate gradients
         if n in nodes:
+            continue
+        # The input nodes doesn't propogates gradients as well
+        if isinstance(n.op, PlaceholderOp):
             continue
         # compute partial gradients wrt inputs using op.gradient
         input_grads = n.op.gradient(n, out_grad)

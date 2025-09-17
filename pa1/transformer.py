@@ -206,7 +206,7 @@ def sgd_epoch(
         y_batch = y[start_idx:end_idx]
 
         # Compute forward and backward passes
-        logits, loss_val, *grads = f_run_model(model_weights)
+        logits, loss_val, *grads = f_run_model(X_batch, y_batch,model_weights)
 
         # Update weights and biases
         for w, g in zip(model_weights, grads):
@@ -303,16 +303,16 @@ def train_model():
        """Forward + backward pass."""
        result = evaluator.run(
            input_values={
-               X_var: X_batch.numpy(),
-               y_groundtruth: y_batch.numpy(),
-               W_Q: model_weights[0].detach().numpy(),
-               W_K: model_weights[1].detach().numpy(),
-               W_V: model_weights[2].detach().numpy(),
-               W_O: model_weights[3].detach().numpy(),
-               W_1: model_weights[4].detach().numpy(),
-               W_2: model_weights[5].detach().numpy(),
-               b_1: model_weights[6].detach().numpy(),
-               b_2: model_weights[7].detach().numpy(),
+               X_var: X_batch,
+               y_groundtruth: y_batch,
+               W_Q: model_weights[0].detach(),
+               W_K: model_weights[1].detach(),
+               W_V: model_weights[2].detach(),
+               W_O: model_weights[3].detach(),
+               W_1: model_weights[4].detach(),
+               W_2: model_weights[5].detach(),
+               b_1: model_weights[6].detach(),
+               b_2: model_weights[7].detach(),
            }
        )
        return result
@@ -329,14 +329,14 @@ def train_model():
            X_batch = X_val[start_idx:end_idx, :max_len]
            logits = test_evaluator.run({
                X_var: X_batch.numpy(),
-               W_Q: model_weights[0].detach().numpy(),
-               W_K: model_weights[1].detach().numpy(),
-               W_V: model_weights[2].detach().numpy(),
-               W_O: model_weights[3].detach().numpy(),
-               W_1: model_weights[4].detach().numpy(),
-               W_2: model_weights[5].detach().numpy(),
-               b_1: model_weights[6].detach().numpy(),
-               b_2: model_weights[7].detach().numpy(),
+               W_Q: model_weights[0].detach(),
+               W_K: model_weights[1].detach(),
+               W_V: model_weights[2].detach(),
+               W_O: model_weights[3].detach(),
+               W_1: model_weights[4].detach(),
+               W_2: model_weights[5].detach(),
+               b_1: model_weights[6].detach(),
+               b_2: model_weights[7].detach(),
            })
            all_logits.append(logits[0])
        concatenated_logits = np.concatenate(all_logits, axis=0)
