@@ -1,7 +1,6 @@
 import functools
 import math
 from typing import Callable, Tuple, List, Optional
-
 import numpy as np
 from sklearn.datasets import load_digits
 from sklearn.model_selection import train_test_split
@@ -71,8 +70,8 @@ def encoder(X: ad.Node, nodes :List[ad.Node], model_dim: int ) -> ad.Node:
     Z = ad.matmul(attn_scores, W_O)
 
     # Fedforward layer
-    H = ad.relu(ad.sum_op(ad.matmul(Z, W1), b1))
-    logits =ad.sum_op(ad.matmul(H, W2),b2)
+    H = ad.relu(ad.add(ad.matmul(Z, W1), b1))
+    logits =ad.add(ad.matmul(H, W2),b2)
     return logits
 
 def transformer(X: ad.Node, nodes: List[ad.Node],
@@ -100,7 +99,7 @@ def transformer(X: ad.Node, nodes: List[ad.Node],
     logits = encoder(X, [W_Q, W_K, W_V, W_O, W1, W2, b1, b2],model_dim)
 
     # Average over sequence length for classification
-    output = ad.mean(logits, dim =-1) # shape (batch_size, num_classes)
+    output = ad.mean(logits, dim = 1) # shape (batch_size, num_classes)
 
     return output
 
@@ -136,10 +135,10 @@ def softmax_loss(Z: ad.Node, y_one_hot: ad.Node, batch_size: int) -> ad.Node:
     Try to think about why our softmax loss may need the batch size.
     """
     exp_logits = ad.exp(Z)
-    softmax = exp_logits/ ad.sum_op(exp_logits, dim=1, keepdim= True)
+    softmax = exp_logits/ ad.sum_op(exp_logits, dim= (1,), keepdim= True)
 
     log_probs = ad.log(softmax +1e-9) # avoid log(0)
-    loss = ad.mul_by_const(ad.sum_op(y_one_hot*log_probs,dim=1)/ batch_size, -1)
+    loss = ad.mul_by_const(ad.sum_op(y_one_hot*log_probs,dim= (1,))/ batch_size, -1)
 
     return loss
 

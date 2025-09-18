@@ -309,6 +309,9 @@ class SumOp(Op):
     """
 
     def __call__(self, node_A: Node, dim: tuple, keepdim: bool = False) -> Node:
+        # Ensure dim is stored as a raw Python type
+        if isinstance(dim, Node):
+            raise TypeError("dim must be int or tuple, not Node")
         return Node(
             inputs=[node_A],
             op=self,
@@ -881,7 +884,9 @@ def gradients(output_node: Node, nodes: List[Node]) -> List[Node]:
     grad_map[output_node] = ones_like(output_node)
 
     # Walk nodes in reverse topological order
+
     for n in reversed(topo):
+
         if n not in grad_map:
             # no gradient flows to this node
             continue
