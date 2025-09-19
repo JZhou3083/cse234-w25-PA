@@ -331,35 +331,105 @@ class SumOp(Op):
         keepdim = node.attrs["keepdim"]
 
         if keepdim:
+            # Gradient already has the right shape
             return [output_grad]
         else:
-            reshape_grad = expand_as_3d(output_grad, node.inputs[0])
-            return [reshape_grad]
+            # Expand directly to match the input's shape
+            grad = expand_as_3d(output_grad, node.inputs[0])
+            return [grad]
 
 class ExpandAsOp(Op):
-    """Op to broadcast a tensor to the shape of another tensor.
-
-    Note: This is a reference implementation for ExpandAsOp.
-        If it does not work in your case, you can modify it.
-    """
+    """Broadcast a tensor to the shape of another tensor (robust)."""
 
     def __call__(self, node_A: Node, node_B: Node) -> Node:
-        return Node(
-            inputs=[node_A, node_B],
-            op=self,
-            name=f"broadcast({node_A.name} -> {node_B.name})",
-        )
+        return Node(inputs=[node_A, node_B], op=self,
+                    name=f"broadcast({node_A.name} -> {node_B.name})")
 
     def compute(self, node: Node, input_values: List[torch.Tensor]) -> torch.Tensor:
-        """Return the broadcasted tensor."""
         assert len(input_values) == 2
         input_tensor, target_tensor = input_values
-        return input_tensor.expand_as(target_tensor)
+        a = tuple(input_tensor.shape)
+        b = tuple(target_tensor.shape)
+
+        # Quick sanity: if shapes already equal, just return input
+        if a == b:
+            return input_tensor
+
+        # Build mapping: match input dims (a) to target dims (b) in order.
+        i = 0
+        matched_positions = []
+        for j in range(len(b)):
+            if i < len(a) and (a[i] == b[j] or a[i] == 1):
+                matched_positions.append(j)
+                i += 1
+                if i == len(a):
+                    break
+        if i < len(a):
+            # Could not map input dims into target dims (in-order) -> incompatible
+            raise RuntimeError(f"Cannot broadcast shape {a} to {b}")
+
+        # Determine positions in target where we must insert singleton dims
+        all_pos = set(range(len(b)))
+        matched_pos_set = set(matched_positions)
+        insert_positions = sorted(list(all_pos - matched_pos_set))
+
+        # Insert singleton dims at those insert_positions (increasing order).
+        grad = input_tensor
+        # unsqueeze uses positions relative to current grad.ndim; inserting earlier affects later indices,
+        # but because insert_positions are increasing and we unsqueeze at the same index in the current tensor,
+        # the positions are correct.
+        for pos in insert_positions:
+            # pos is index in target; we must map it to current grad dims.
+            # number of previously inserted dims before pos = count of p' in insert_positions < pos
+            num_before = sum(1 for p in insert_positions if p < pos)
+            # the current insertion index in grad is pos - num_before
+            insert_idx = pos - num_before
+            grad = grad.unsqueeze(insert_idx)
+
+        # Now grad.shape should be broadcast-compatible with target
+        try:
+            return grad.expand_as(target_tensor)
+        except Exception as e:
+            raise RuntimeError(f"expand_as failed for shapes {tuple(grad.shape)} -> {b}: {e}")
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
-        """Given the gradient of the broadcast node, compute partial adjoint to input."""
+        """
+        Return gradient w.r.t. the input (the expanded tensor) and zeros_like for the target.
+        We need to sum output_grad over the dims that were inserted during compute.
+        We attempt to infer insert positions from static shape metadata on the node inputs if available.
+        Fallback: sum over dim=1 (common transformer case).
+        """
+        input_node, target_node = node.inputs
 
-        return [sum_op(output_grad,dim=0), zeros_like(output_grad)]
+        # Try to get static shapes from node attrs. If you stored shapes on Variables, use them.
+        a_shape = input_node.attrs.get("shape", None)  # expect tuple or None
+        b_shape = target_node.attrs.get("shape", None)
+
+        if a_shape is not None and b_shape is not None:
+            a = tuple(a_shape)
+            b = tuple(b_shape)
+            # Build mapping input->target as in compute to find inserted positions
+            i = 0
+            matched_positions = []
+            for j in range(len(b)):
+                if i < len(a) and (a[i] == b[j] or a[i] == 1):
+                    matched_positions.append(j)
+                    i += 1
+                    if i == len(a):
+                        break
+            if i < len(a):
+                # can't map, fallback
+                return [sum_op(output_grad, dim=1, keepdim=True), zeros_like(output_grad)]
+            insert_positions = tuple(sorted(set(range(len(b))) - set(matched_positions)))
+            if len(insert_positions) == 0:
+                return [output_grad, zeros_like(output_grad)]
+            if len(insert_positions) == 1:
+                return [sum_op(output_grad, dim=insert_positions[0], keepdim=True), zeros_like(output_grad)]
+            return [sum_op(output_grad, dim=insert_positions, keepdim=True), zeros_like(output_grad)]
+
+        # Fallback heuristic: common transformer case -> sum over seq dimension (dim 1)
+        return [sum_op(output_grad, dim=1, keepdim=True), zeros_like(output_grad)]
+
 
 class ExpandAsOp3d(Op):
     """Op to broadcast a tensor to the shape of another tensor.
@@ -747,6 +817,7 @@ class MeanOp(Op):
         divided = div(output_grad, count)
         # expand back to input shape
         expanded = expand_as(divided, x)
+
         return [expanded]
 
 class ExpOp(Op):
@@ -865,6 +936,8 @@ class Evaluator:
                 # Compute from inputs
                 input_vals = [computed_values[inp] for inp in node.inputs]
                 computed_values[node] = node.op.compute(node, input_vals)
+                # print(f"[DEBUG] Node: {node.name}, Op: {type(node.op).__name__}, "
+                # f"Input shapes: {[v.shape for v in input_vals]}, Output shape: {computed_values[node].shape}")
             else:
                 # Node has no inputs and wasn't provided
                 raise ValueError(f"No value provided for input node '{node.name}'.")

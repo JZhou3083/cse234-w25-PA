@@ -14,7 +14,6 @@ def check_evaluator_output(
     output_values = evaluator.run(input_values)
     assert len(output_values) == len(expected_outputs)
     for output_val, expected_val in zip(output_values, expected_outputs):
-        print(repr(output_val))
         torch.testing.assert_close(output_val, expected_val, atol=1e-4, rtol=1e-4)
 
 def test_add():
@@ -482,5 +481,6 @@ if __name__ == "__main__":
     # test_broadcast()
     # test_sqrt()
     # test_power()
-    test_sum_op()
+    # test_sum_op()
+    test_mean()
 
