@@ -1,5 +1,5 @@
 import tqdm
-import math
+import time
 from typing import Callable, Tuple, List, Optional
 import numpy as np
 from sklearn.datasets import load_digits
@@ -10,7 +10,8 @@ from sklearn.preprocessing import OneHotEncoder
 import auto_diff as ad
 import torch
 from torchvision import datasets, transforms
-
+import os
+MODEL_DIR = os.path.join(os.getcwd(),'models')
 max_len = 28
 
 def linear(X:ad.Node, W: ad.Node, b :ad.Node = None) -> ad.Node:
@@ -195,7 +196,7 @@ def sgd_epoch(
     num_batches = (num_examples + batch_size - 1) // batch_size  # Compute the number of batches
     total_loss = 0.0
 
-    for i in range(num_batches):
+    for i in tqdm.tqdm(range(num_batches)):
         # Get the mini-batch data
         start_idx = i * batch_size
         if start_idx + batch_size> num_examples:continue
@@ -224,7 +225,7 @@ def sgd_epoch(
     # You should return the list of parameters and the loss
     return model_weights, average_loss
 
-def train_model():
+def train_model(use_last_model = None):
    """Train a transformer-based classifier on MNIST."""
    # Set up model params
    input_dim = 28           # Each row of the MNIST image
@@ -297,6 +298,15 @@ def train_model():
        torch.tensor(b_1_val, dtype=torch.float64),
        torch.tensor(b_2_val, dtype=torch.float64),
    ]
+   # --- Load repvious weights if requested ---
+   if use_last_model is not None:
+        try:
+           print(f"Loading previous model from {use_last_model}...")
+           model_weights = torch.load(os.path.join(MODEL_DIR, f"{use_last_model}.pth"))
+           print("Model weights loaded.")
+        except:
+           print('None existed model name, Training with this Name')
+
    # --- Runner functions ---
    def f_run_model(X_batch, y_batch, model_weights):
        """Forward + backward pass."""
@@ -320,7 +330,7 @@ def train_model():
        num_examples = X_val.shape[0]
        num_batches = (num_examples + batch_size - 1) // batch_size
        all_logits = []
-       for i in tqdm(range(num_batches)):
+       for i in tqdm.tqdm(range(num_batches)):
            start_idx = i * batch_size
            end_idx = min(start_idx + batch_size, num_examples)
            if end_idx - start_idx < batch_size:
@@ -344,18 +354,32 @@ def train_model():
    # --- Training loop ---
    X_train, X_test = torch.tensor(X_train), torch.tensor(X_test)
    y_train, y_test = torch.DoubleTensor(y_train), torch.DoubleTensor(y_test)
+   best_val_accu = 0.0
+   best_weights = None
    for epoch in range(num_epochs):
        X_train, y_train = shuffle(X_train, y_train)
+       print("Traning model:")
        model_weights, loss_val = sgd_epoch(
            f_run_model, X_train, y_train, model_weights, batch_size, lr
        )
+       print('Training completed, evaluateing the model: ')
        predict_label = f_eval_model(X_test, model_weights)
+       acc = np.mean(predict_label == y_test.numpy())
        print(
-           f"Epoch {epoch}: test accuracy = {np.mean(predict_label == y_test.numpy())}, "
+           f"Epoch {epoch}: test accuracy = {acc}, "
            f"loss = {loss_val}"
        )
+       if acc > best_val_accu:
+           best_val_accu = acc
+           best_weights = [w.clone() for w in model_weights]
    predict_label = f_eval_model(X_test, model_weights)
+
+   # Ensure MODEL_DIR exists
+   os.makedirs(MODEL_DIR, exist_ok=True)
+   filename = f"ViT_Epochs{num_epochs}_lr{lr}_acc{best_val_accu}.pth"
+
+   torch.save(best_weights, os.path.join(MODEL_DIR, filename))
    return np.mean(predict_label == y_test.numpy())
 
 if __name__ == "__main__":
-    print(f"Final test accuracy: {train_model()}")
+    print(f"Final test accuracy: {train_model("ViT_Epochs1_lr0.02_acc0.5124")}")
