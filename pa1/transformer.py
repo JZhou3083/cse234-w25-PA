@@ -1,4 +1,4 @@
-import tqdm
+from tqdm import tqdm
 import time
 from typing import Callable, Tuple, List, Optional
 import numpy as np
@@ -11,7 +11,7 @@ import auto_diff as ad
 import torch
 from torchvision import datasets, transforms
 import os
-MODEL_DIR = os.path.join(os.getcwd(),'models')
+MODEL_DIR = os.path.join(os.getcwd(),'checkpoints')
 max_len = 28
 
 def linear(X:ad.Node, W: ad.Node, b :ad.Node = None) -> ad.Node:
@@ -196,7 +196,7 @@ def sgd_epoch(
     num_batches = (num_examples + batch_size - 1) // batch_size  # Compute the number of batches
     total_loss = 0.0
 
-    for i in tqdm.tqdm(range(num_batches)):
+    for i in tqdm(range(num_batches)):
         # Get the mini-batch data
         start_idx = i * batch_size
         if start_idx + batch_size> num_examples:continue
@@ -330,7 +330,7 @@ def train_model(use_last_model = None):
        num_examples = X_val.shape[0]
        num_batches = (num_examples + batch_size - 1) // batch_size
        all_logits = []
-       for i in tqdm.tqdm(range(num_batches)):
+       for i in tqdm(range(num_batches)):
            start_idx = i * batch_size
            end_idx = min(start_idx + batch_size, num_examples)
            if end_idx - start_idx < batch_size:
@@ -378,6 +378,7 @@ def train_model(use_last_model = None):
    os.makedirs(MODEL_DIR, exist_ok=True)
    filename = f"ViT_Epochs{num_epochs}_lr{lr}_acc{best_val_accu}.pth"
 
+   print(f"Saving best model to {os.path.join(MODEL_DIR, filename)}")
    torch.save(best_weights, os.path.join(MODEL_DIR, filename))
    return np.mean(predict_label == y_test.numpy())
 

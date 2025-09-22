@@ -4,4 +4,4 @@
 *pycache
 _pycache_
 data/
-models
+checkpoints/
