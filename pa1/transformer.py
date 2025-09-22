@@ -209,6 +209,9 @@ def sgd_epoch(
 
         # Update weights and biases
         for w, g in zip(model_weights, grads):
+            print(f"[DEBUG] Weight shape: {w.shape}, Grad shape: {g.shape}\n")
+            if g.ndim > w.ndim:  # likely batch dimension
+                g = g.sum(dim=0)  # sum over batch
             w -= lr*g
         # Hint: You can update the tensor using something like below:
         # W_Q -= lr * grad_W_Q.sum(dim=0)

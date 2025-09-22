@@ -482,5 +482,6 @@ if __name__ == "__main__":
     # test_sqrt()
     # test_power()
     # test_sum_op()
-    test_mean()
+    # test_mean()
+    test_expand_as()
 
