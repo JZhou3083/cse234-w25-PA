@@ -654,9 +654,16 @@ class SoftmaxOp(Op):
         )
 
     def compute(self, node: Node, input_values: List[torch.Tensor]) -> torch.Tensor:
-        """Return softmax of input along specified dimension."""
+        """Return numerically stable softmax of input along specified dimension."""
         assert len(input_values) == 1
-        return torch.softmax(input_values[0], dim=node.attrs['dim'])
+        x = input_values[0]
+        dim = node.attrs['dim']
+        # Subtract max for numerical stability
+        x_max = torch.max(x, dim=dim, keepdim=True).values
+        x_stable = x - x_max
+        exp_x = torch.exp(x_stable)
+        softmax_out = exp_x / torch.sum(exp_x, dim=dim, keepdim=True)
+        return softmax_out
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
         """Given gradient of softmax node, return partial adjoint to input."""
@@ -833,6 +840,19 @@ class ExpOp(Op):
     def gradient(self, node:Node, output_grad: Node) ->  List[Node]:
         return [output_grad * node]
 
+class MaxOp(Op):
+    def __call__(self, node: Node, dim: int =None, keepdim:bool = False)->Node:
+        return Node(inputs = [Node], op = self,attrs={"dim": dim, "keepdim": keepdim},name = f"max({node.name})")
+    def compute(self, node:Node, input_values: List[torch.Tensor])-> torch.Tensor:
+        assert len(input_values)==1
+        x = input_values[0]
+        return x.max(dim = node.attrs['dim'], keepdim=node.attrs['keepdim'])[0]
+
+    def gradient(self, node, output_grad):
+        x = node.inputs[0]
+        grad_x = output_grad*(x==max_op(x, dim=node.attrs['dim'], keepdim = node.attrs['keepdim'])[0])
+        return [grad_x]
+
 # Create global instances of ops.
 # Your implementation should just use these instances, rather than creating new instances.
 placeholder = PlaceholderOp()
@@ -860,6 +880,7 @@ expand_as_3d = ExpandAsOp3d()
 log = LogOp()
 sub = SubOp()
 broadcast = BroadcastOp()
+max_op = MaxOp()
 def topological_sort(nodes):
     '''
     Helper function to perfomr topological sort on nodes.

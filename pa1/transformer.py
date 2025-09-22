@@ -1,4 +1,4 @@
-import functools
+import tqdm
 import math
 from typing import Callable, Tuple, List, Optional
 import numpy as np
@@ -134,8 +134,7 @@ def softmax_loss(Z: ad.Node, y_one_hot: ad.Node, batch_size: int) -> ad.Node:
     softmax loss function usually does not take the batch size as input.
     Try to think about why our softmax loss may need the batch size.
     """
-    exp_logits = ad.exp(Z)
-    softmax = exp_logits/ ad.sum_op(exp_logits, dim= (1,), keepdim= True)
+    softmax = ad.softmax(Z,dim =1)
 
     log_probs = ad.log(softmax +1e-9) # avoid log(0)
     loss = ad.mul_by_const(ad.sum_op(y_one_hot*log_probs,dim= (1,))/ batch_size, -1)
@@ -209,20 +208,18 @@ def sgd_epoch(
 
         # Update weights and biases
         for w, g in zip(model_weights, grads):
-            print(f"[DEBUG] Weight shape: {w.shape}, Grad shape: {g.shape}\n")
-            if g.ndim > w.ndim:  # likely batch dimension
-                g = g.sum(dim=0)  # sum over batch
+            # print(f"[DEBUG] Weight shape: {w.shape}, Grad shape: {g.shape}\n")
+            while g.ndim > w.ndim:  # likely batch dimension
+                g = g.sum(dim=0)  # sum over batch or seq_length
             w -= lr*g
         # Hint: You can update the tensor using something like below:
-        # W_Q -= lr * grad_W_Q.sum(dim=0)
-
         # Accumulate the loss
         total_loss += loss_val * batch_size
 
 
     # Compute the average loss
     average_loss = total_loss / num_examples
-    print('Avg_loss:', average_loss)
+    # print('Avg_loss:', average_loss)
 
     # You should return the list of parameters and the loss
     return model_weights, average_loss
@@ -236,7 +233,7 @@ def train_model():
    model_dim = 128
    eps = 1e-5
    # Training settings
-   num_epochs = 20
+   num_epochs = 50
    batch_size = 50
    lr = 0.02
    # Define variables for graph
@@ -323,14 +320,14 @@ def train_model():
        num_examples = X_val.shape[0]
        num_batches = (num_examples + batch_size - 1) // batch_size
        all_logits = []
-       for i in range(num_batches):
+       for i in tqdm(range(num_batches)):
            start_idx = i * batch_size
            end_idx = min(start_idx + batch_size, num_examples)
            if end_idx - start_idx < batch_size:
                continue
            X_batch = X_val[start_idx:end_idx, :max_len]
            logits = test_evaluator.run({
-               X_var: X_batch.numpy(),
+               X_var: X_batch,
                W_Q: model_weights[0].detach(),
                W_K: model_weights[1].detach(),
                W_V: model_weights[2].detach(),
