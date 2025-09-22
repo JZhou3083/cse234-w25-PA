@@ -234,9 +234,9 @@ def train_model(use_last_model = None):
    model_dim = 128
    eps = 1e-5
    # Training settings
-   num_epochs = 1
+   num_epochs = 10
    batch_size = 50
-   lr = 0.02
+   lr = 0.008
    # Define variables for graph
    X_var = ad.Variable(name="X")  # (batch_size, seq_length, input_dim)
    y_groundtruth = ad.Variable(name="y")
@@ -383,4 +383,4 @@ def train_model(use_last_model = None):
    return np.mean(predict_label == y_test.numpy())
 
 if __name__ == "__main__":
-    print(f"Final test accuracy: {train_model("ViT_Epochs50_lr0.02_acc0.7862")}")
+    print(f"Final test accuracy: {train_model('ViT_Epochs10_lr0.008_acc0.8013')}")

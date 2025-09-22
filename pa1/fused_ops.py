@@ -33,7 +33,18 @@ class MatMulLayerNormOp(Op):
         """Return the fused matmul and layer normalization result."""
         assert len(input_values) == 2
         """TODO: your code here"""
-        raise NotImplementedError
+        a = input_values[0]
+        b = input_values[1]
+        normalized_shape = node.attrs["normalized_shape"]
+        eps = node.attrs["eps"]
+        # Perform matrix multiplication
+        matmul_result = torch.matmul(a, b)
+        # Compute mean and variance for layer normalization
+        mean = matmul_result.mean(dim=-1, keepdim=True)
+        variance = matmul_result.var(dim=-1, keepdim=True, unbiased=False)
+        # Normalize the result
+        layernorm_result = (matmul_result - mean) / torch.sqrt(variance + eps)
+        return layernorm_result
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
         """Given gradient of fused node, return partial adjoints to each input."""
