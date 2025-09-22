@@ -11,7 +11,7 @@ import auto_diff as ad
 import torch
 from torchvision import datasets, transforms
 import os
-MODEL_DIR = os.path.join(os.getcwd(),'checkpoints')
+MODEL_DIR = os.path.join(os.getcwd(),'pa1','checkpoints')
 max_len = 28
 
 def linear(X:ad.Node, W: ad.Node, b :ad.Node = None) -> ad.Node:
@@ -234,7 +234,7 @@ def train_model(use_last_model = None):
    model_dim = 128
    eps = 1e-5
    # Training settings
-   num_epochs = 20
+   num_epochs = 1
    batch_size = 50
    lr = 0.02
    # Define variables for graph
