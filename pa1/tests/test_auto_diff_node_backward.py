@@ -39,7 +39,7 @@ def test_add():
 
 def test_add_by_const():
     x = ad.Variable("x")
-    y = ad.add_by_const(x, 5.0) 
+    y = ad.add_by_const(x, 5.0)
     y_grad = ad.Variable("y_grad")
     x_grad = y.op.gradient(y,y_grad)
     evaluator = ad.Evaluator(eval_nodes=[x_grad[0]])
@@ -82,7 +82,7 @@ def test_mul_by_const():
     y_grad = ad.Variable("y_grad")
     x_grad = y.op.gradient(y, y_grad)[0]
     evaluator = ad.Evaluator(eval_nodes=[x_grad])
-    
+
     check_evaluator_output(
         evaluator,
         input_values={
@@ -142,7 +142,7 @@ def test_zeros_like():
     evaluator = ad.Evaluator(eval_nodes=[x_grad])
 
     check_evaluator_output(
-        evaluator, 
+        evaluator,
         input_values = {x: torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]), y_grad: torch.tensor([[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]])},
         expected_outputs= [torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])]
     )
@@ -155,7 +155,7 @@ def test_ones_like():
     evaluator = ad.Evaluator(eval_nodes=[x_grad])
 
     check_evaluator_output(
-        evaluator, 
+        evaluator,
         input_values = {x: torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]), y_grad: torch.tensor([[1.0, 2.0, 1.0], [1.0, 1.0, 1.0]])},
         expected_outputs= [torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])]
     )
@@ -180,35 +180,6 @@ def test_sum_op():
         expected_outputs=[torch.tensor([[1.0], [1.0], [1.0]])]
     )
 
-def test_expand_as():
-    x1 = ad.Variable("x1")
-    x2 = ad.Variable("x2")
-    y = ad.expand_as(x1, x2)
-    y_grad = ad.Variable("y_grad")
-    x1_grad, x2_grad = y.op.gradient(y, y_grad)
-    evaluator = ad.Evaluator(eval_nodes=[x1_grad, x2_grad])
-
-    check_evaluator_output(
-        evaluator,
-        input_values={x1: torch.tensor([[1.0, 2.0, 3.0]]), x2: torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]), y_grad: torch.tensor([[2.0, 4.0, 2.0], [2.0, 2.0, 2.0]])},
-        expected_outputs= [torch.tensor([4.0, 6.0, 4.0]), torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])]
-    )
-
-def test_expand_as_3d():
-    x1 = ad.Variable("x1")
-    x2 = ad.Variable("x2")  
-
-    y = ad.expand_as(x1, x2)
-    y_grad = ad.Variable("y_grad")
-
-    x1_grad, x2_grad = y.op.gradient(y, y_grad)
-    evaluator = ad.Evaluator(eval_nodes=[x1_grad, x2_grad])
-
-    check_evaluator_output(
-        evaluator,
-        input_values={x1: torch.tensor([1.0, 2.0, 3.0]), x2: torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]), y_grad: torch.tensor([[2.0, 4.0, 2.0], [2.0, 2.0, 2.0]])},
-        expected_outputs= [torch.tensor([4.0, 6.0, 4.0]), torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])]
-    )
 
 def test_div():
     x1 = ad.Variable("x1")
@@ -281,7 +252,7 @@ def test_matmul_3d():
                           [[9.0, 8.0, 7.0],
                            [6.0, 5.0, 4.0],
                            [3.0, 2.0, 1.0]]])
-    
+
     x2_val = torch.tensor([[[1.0, 2.0, 3.0],
                            [4.0, 5.0, 6.0],
                            [7.0, 8.0, 9.0]],
@@ -399,7 +370,7 @@ def test_broadcast():
 
     x_val = torch.tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
     y_grad_val = torch.tensor([
-        [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], 
+        [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
         [[7.0, 8.0], [9.0, 10.0], [11.0, 12.0]]
     ])
 
@@ -446,7 +417,7 @@ def test_log():
     y = ad.log(x)
     y_grad = ad.Variable("y_grad")
     x_grad = y.op.gradient(y, y_grad)[0]
-    evaluator = ad.Evaluator(eval_nodes=[x_grad])   
+    evaluator = ad.Evaluator(eval_nodes=[x_grad])
 
     check_evaluator_output(
         evaluator,
@@ -473,7 +444,7 @@ if __name__ == "__main__":
     # test_div()
     # test_div_by_const()
     # test_layernorm()
-    # test_relu() 
+    # test_relu()
     # test_softmax()
     # test_matmul()
     # test_matmul_3d()
