@@ -54,49 +54,28 @@ class MatMulLayerNormOp(Op):
         normalized_shape = node.attrs['normalized_shape']
         dim = tuple(range(-len(normalized_shape),0))
 
+        # Forward pass computations needed for backward
+        Z = matmul(A, B)
+        mean_Z = mean(Z, dim=dim, keepdim=True)
+        var_Z = mean(power(Z - mean_Z, 2), dim=dim, keepdim=True)
+        std_Z = sqrt(var_Z + eps)
+        Z_hat = (Z - mean_Z) / std_Z
+
+        # Gradient wrt Z (layernorm backward)
+        g = output_grad
+        g_mean = mean(g, dim=dim, keepdim=True)
+        gzh_mean = mean(g * Z_hat, dim=dim, keepdim=True)
+
+        grad_Z = (g - g_mean - Z_hat * gzh_mean) / std_Z
+
+        # Gradients wrt A and B (matmul backward)
         B_T = transpose(B, -2, -1)
         A_T = transpose(A, -2, -1)
 
-        INTER =  matmul(A,B)
-        mean_inter = mean(INTER, dim = dim, keepdim= True)
-        inter_minus_mean = INTER- mean_inter
-        var_INTER = mean(power(inter_minus_mean,2), dim = dim, keepdim = True)
-        std_INTER = sqrt(var_INTER +eps)
-
-        # normalized input
-        INTER_hat = inter_minus_mean/ std_INTER
-
-        # gradient wrt input
-        g = output_grad
-        g_mean =mean(g*INTER_hat, dim = dim, keepdim =True)
-        ginthat_mean = mean(g * INTER_hat, dim=dim, keepdim=True)
-
-        grad_int = (g - g_mean - INTER_hat * ginthat_mean) / std_INTER
-
-        grad_A = matmul(grad_int,B_T)
-        grad_B = matmul(A_T, grad_int)
+        grad_A = matmul(grad_Z, B_T)
+        grad_B = matmul(A_T, grad_Z)
 
         return [grad_A, grad_B]
-
-
-
-
-
-
-        # grad_B_final
-        mean_gradB = mean(grad_B, dim = dim, keepdim=True)
-        gradB_minus_mean = grad_B- mean_gradB
-        var_gradB = mean(power(gradB_minus_mean, 2), dim=dim, keepdim=True)
-        std_gradB = sqrt(var_gradB + eps)
-
-        gradB_hat = gradB_minus_mean/std_gradA
-        gBhat_mean = mean(g*gradB_hat, dim = dim, keepdim=True)
-
-        grad_B_final = (g - g_mean - gradB_hat * gBhat_mean) / std_gradB
-
-        return [grad_A_final, grad_B_final]
-
-
 
 
 
