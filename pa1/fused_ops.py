@@ -100,14 +100,37 @@ class MatMulSoftmaxOp(Op):
     def compute(self, node: Node, input_values: List[torch.Tensor]) -> torch.Tensor:
         """Return the fused matmul and softmax result."""
         assert len(input_values) == 2
-        """TODO: your code here"""
-        raise NotImplementedError
+        a = input_values[0]
+        b = input_values[1]
+        dim = node.attrs["dim"]
+        # Perform matrix multiplication
+        matmul_result = torch.matmul(a, b)
+        # Apply softmax
+        softmax_result = torch.nn.functional.softmax(matmul_result, dim=dim)
+        return softmax_result
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
         """Given gradient of fused node, return partial adjoints to each input."""
         # First compute the forward pass result we need for softmax gradient
-        """TODO: your code here"""
-        raise NotImplementedError
+        A , B  = node.inputs
+        dim = node.attrs['dim']
+
+        # forward pass to get matmul output
+        Z = matmul(A, B)
+
+        # compute gradient wrt Z
+        softmax_out = softmax(Z)
+        dot = sum_op(output_grad * softmax_out, dim=dim, keepdim=True)
+        grad_Z = softmax_out * (output_grad - dot)
+
+        # gradients wrt A and B (matmul backward)
+        B_T = transpose(B, -2, -1)
+        A_T = transpose(A, -2, -1)
+
+        grad_A = matmul(grad_Z, B_T)
+        grad_B = matmul(A_T, grad_Z)
+
+        return [grad_A, grad_B]
 
 # Create global instances of the fused ops
 matmul_layernorm = MatMulLayerNormOp()
